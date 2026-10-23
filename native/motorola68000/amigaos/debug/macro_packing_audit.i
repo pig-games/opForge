@@ -2,7 +2,7 @@
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 .ifdef OPFORGE_MACRO_PACKING_AUDIT
-	.use debug.amigaos.lazy_work as packing_audit
+	.use opforge.debug.lazy_work as packing_audit
 .endif
 .endif
 .endif

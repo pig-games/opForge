@@ -148,7 +148,7 @@ fn native_expected(sources: &[(&str, &[u8])], cpu: &str, expected: &[u8]) {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_TEMPLATE_STORAGE cpu={cpu} source_bytes={} output_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={}", sources.iter().map(|(_, bytes)| bytes.len()).sum::<usize>(), expected.len(), runs[0].start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total());
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")];

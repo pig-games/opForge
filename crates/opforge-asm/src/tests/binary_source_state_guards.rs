@@ -210,7 +210,7 @@ fn compact_state_false_guard_policy_fs_uae() {
 }
 
 fn actual_state_binding_source(root: &std::path::Path) -> String {
-    let mut source = String::from(".module state_probe\n.cpu 68020\n.use experimental.amigaos.binary_state as state\n.use experimental.amigaos.binary_package as package\n.section code,kind=code\nentry .block\n");
+    let mut source = String::from(".module state_probe\n.cpu 68020\n.use opforge.assembler.layout.state as state\n.use opforge.packages.format as package\n.section code,kind=code\nentry .block\n");
     for function in ["validate", "reset", "find", "apply", "check"] {
         source.push_str(&format!(" bsr.w state.{function}\n"));
     }
@@ -243,13 +243,9 @@ fn actual_state_binding_source(root: &std::path::Path) -> String {
         }
     }
     source.push_str(" move.l #package.Header.StatePlan,d0\n move.l #package.Header.StatePlanBytes,d0\n rts\n.bend\n.endsection\n.output \"state-binding.hunk\",format=hunk,sections=code,bss\n.endmodule\n");
-    for name in ["binary_package.asm", "binary_state.asm"] {
+    for name in ["packages/format.asm", "assembler/layout/state.asm"] {
         source.push_str(
-            &std::fs::read_to_string(
-                root.join("native/motorola68000/amigaos/experimental")
-                    .join(name),
-            )
-            .unwrap(),
+            &std::fs::read_to_string(root.join("native/motorola68000/amigaos").join(name)).unwrap(),
         );
         source.push('\n');
     }
@@ -297,7 +293,7 @@ fn compact_actual_state_package_binding_probe_fs_uae() {
     let build = crate::native_package_build::build_native_packages(
         &registry,
         &dir.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &crate::native_package_build::EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();

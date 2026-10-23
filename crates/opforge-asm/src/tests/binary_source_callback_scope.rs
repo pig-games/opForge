@@ -2,9 +2,9 @@
 use super::*;
 use vm::binary_source_package::BinarySourcePackage;
 
-const SOURCE: &str = r#".module experimental.amigaos.binary_app
+const SOURCE: &str = r#".module opforge.assembler.driver
 .cpu 68020
-.use experimental.amigaos.binary_assembly as assembly
+.use opforge.assembler.layout.assembly as assembly
 .section code,kind=code
 .pub
 entry .block
@@ -36,7 +36,7 @@ payload .byte $aa,$bb,$cc
 .endsection
 .output "build/sections.hunk",format=hunk,sections=code,bss,data
 .endmodule
-.module experimental.amigaos.binary_assembly
+.module opforge.assembler.layout.assembly
 .cpu 68020
 .pub
 Frame .struct

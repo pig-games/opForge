@@ -1,0 +1,502 @@
+; Final numeric placement and VM recipe replay for privately compiled modules.
+; @opforge-owner: opforge.assembler.modules.runtime
+; Images own bytes/offsets; this session owns only placement and a reusable buffer.
+	.module opforge.assembler.modules.runtime
+	.cpu 68020
+	.use opforge.assembler.modules.registry as registry
+	.use opforge.assembler.modules.records as records
+	.use opforge.assembler.modules.image as image
+	.use opforge.assembler.modules.interface_store as interfaceStore
+	.use opforge.assembler.modules.assembly_interface as interface
+	.use opforge.assembler.modules.semantic_exports as values
+	.use opforge.assembler.layout.assembly as assembly
+	.use opforge.packages.format as package
+	.use opforge.assembler.layout.sections as sections
+	.use opforge.platform.memory as memory
+	.use opforge.assembler.layout.encoding as encoding
+	.use opforge.assembler.layout.hunk_references as references
+	.use opforge.vm.exprvm.runtime as exprvm
+	.pub
+DESCRIBE = 0
+PLACE = 1
+EMIT = 2
+	.priv
+Session	.struct
+Registry	.long ?
+Frame	.long ?
+Module	.long ?
+Fragment	.long ?
+Descriptor	.long ?  ; metadata borrow; contains no payload pointer
+Placement	.long ?
+ImportResolver	.long ?
+ImportContext	.long ?
+ImportValid	.long ?
+ImportModule	.long ?
+ImportOrdinal	.long ?
+TargetModule	.long ?
+TargetFragment	.long ?
+TargetOffset	.long ?
+	.endstruct
+SESSION_BYTES = Session.TargetOffset+4
+	.section bss, kind=bss
+State	.res byte, SESSION_BYTES
+Link	.res byte, image.LINK_FRAME_BYTES
+Buffer	.res byte, memory.Block.Used+4
+InterfaceReader	.res byte, interfaceStore.STATE_BYTES
+	.endsection
+	.section code, kind=code
+	.pub
+; A0=borrowed registry.State. No owners transfer; one shared assembly session.
+; D0/CCR=status; other registers preserved. release ends the borrow.
+begin	.block
+	move.l a0, State+Session.Registry
+	clr.l State+Session.ImportValid
+	moveq #0, d0
+	rts
+	.bend  ; begin
+
+; A0=callback,A1=context. D0/CCR=OK; other registers preserved.
+; Callback: A0=context,D1=consumer registry module,D2=zero-based import ordinal
+; ->D0/CCR=status,D1=current global source symbol or references.NO_BASE;
+; callback preserves other registers.
+; This transient bridge is used only for Hunk source bookkeeping, never address
+; resolution and never serialized into module objects. Zero clears the bridge.
+setImportResolver	.block
+	move.l a0, State+Session.ImportResolver
+	move.l a1, State+Session.ImportContext
+	moveq #0, d0
+	rts
+	.bend  ; setImportResolver
+
+; Shared assembly Frame.Fragment callback. A0=Frame,A1=packed fragment record,
+; D0=DESCRIBE/PLACE/EMIT. Success D1=alignment,D2=payload bytes,D3=extent,
+; A1=borrowed payload on EMIT, zero on DESCRIBE/PLACE. Others preserved.
+; Place refreshes only this fragment's exported addresses on each layout pass.
+; Emit applies package-owned recipes and forwards absolute Hunk relocations.
+; DESCRIBE/PLACE use only the resident linker directory. Only EMIT acquires
+; payload. Hunk emission visits each module's fragments together, allowing
+; the preceding full image to retire before the next module is read.
+fragment	.block
+	movem.l d4-d7/a0/a2-a6, -(sp)
+	move.l d0, d7
+	cmpi.l #EMIT, d7
+	bhi.w bad
+	move.l a0, State+Session.Frame
+	movea.l a1, a0
+	moveq #records.FRAGMENT_BYTES, d0
+	jsr records.fragmentView
+	bne.w bad
+	move.l d1, State+Session.Module
+	move.l d2, State+Session.Fragment
+	movea.l State+Session.Registry, a0
+	jsr registry.locate
+	bne.w bad
+	move.l a2, State+Session.Descriptor
+	move.l a3, State+Session.Placement
+	move.l d2, Link+image.LinkFrame.BlockId
+	tst.l d7
+	beq.w describe
+	movea.l State+Session.Frame, a4
+	movea.l assembly.Frame.Context(a4), a5
+	movea.l assembly.Frame.Sections(a4), a6
+	cmpi.w #sections.HUNK_MODE, sections.State.Mode(a6)
+	bne.w bad
+	move.l package.Context.Pc(a5), registry.Placement.Base(a3)
+	moveq #0, d0
+	move.w sections.State.HunkCurrent(a6), d0
+	move.l d0, registry.Placement.Section(a3)
+	move.l #1, registry.Placement.Known(a3)
+	bsr.w publishAddresses
+	bne.w bad
+	cmpi.l #EMIT, d7
+	bne.w describe
+	movea.l State+Session.Descriptor, a2
+	move.l image.Block.Bytes(a2), d0
+	beq.w describe  ; BSS/empty fragments have no payload or patch recipes
+	lea Buffer, a0
+	jsr memory.reserve
+	bne.w bad
+	movea.l State+Session.Registry, a0
+	move.l State+Session.Module, d1
+	jsr registry.acquireEmit
+	bne.w bad
+	move.l a1, Link+image.LinkFrame.Image
+	move.l image.Header.Bytes(a1), Link+image.LinkFrame.ImageBytes
+	movea.l State+Session.Placement, a3
+	move.l registry.Placement.Base(a3), Link+image.LinkFrame.Base
+	move.l Buffer+memory.Block.Pointer, Link+image.LinkFrame.Output
+	move.l Buffer+memory.Block.Capacity, Link+image.LinkFrame.Capacity
+	move.l #resolve, Link+image.LinkFrame.Resolve
+	move.l #patch, Link+image.LinkFrame.Patch
+	move.l #State, Link+image.LinkFrame.Context
+	; linkValidated borrows image rows across callbacks. resolve reads provider
+	; interfaces and metadata only; it cannot replace the final payload cache.
+	lea Link, a0
+	jsr image.linkValidated
+	bne.w bad
+	bsr.w publishRelocations
+	bne.w bad
+	movea.l Buffer+memory.Block.Pointer, a1
+	bra.w result
+describe
+	suba.l a1, a1
+result
+	movea.l State+Session.Descriptor, a2
+	move.l image.Block.Alignment(a2), d1
+	move.l image.Block.Bytes(a2), d2
+	move.l image.Block.Extent(a2), d3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend  ; fragment
+
+; Free only this session's reusable link storage, never the borrowed registry.
+; D0/CCR=0; other registers preserved. Idempotent after partial failure.
+release	.block
+	movem.l d1/a0, -(sp)
+	lea Buffer, a0
+	jsr memory.release
+	lea InterfaceReader, a0
+	jsr interfaceStore.release
+	lea State, a0
+	moveq #SESSION_BYTES/4-1, d1
+clear
+	clr.l (a0)+
+	dbra d1, clear
+	lea Link, a0
+	moveq #image.LINK_FRAME_BYTES/4-1, d1
+clearLink
+	clr.l (a0)+
+	dbra d1, clearLink
+	moveq #0, d0
+	movem.l (sp)+, d1/a0
+	rts
+	.bend  ; release
+	.priv
+
+; D1=opaque target. D0=status,D1=absolute value,D2=zero-based section.
+; Missing forward placement remains a zero address during pass one; strict
+; final emission requires every referenced whole fragment to have been placed.
+; Local targets always use the active module, preserving its disk-cache borrow.
+; Cross-module references resolve provider-local entities from stored interfaces;
+; they never acquire another module payload or read installed global values.
+target	.block
+	movem.l d3-d6/a0-a5, -(sp)
+	move.l d1, d6
+	movea.l State+Session.Frame, a4
+	movea.l assembly.Frame.Context(a4), a5
+	btst #31, d1
+	bne.w external
+	move.l d1, d2
+	move.l State+Session.Module, d1
+	movea.l State+Session.Registry, a0
+	jsr registry.locate
+	bne.w bad
+	tst.l registry.Placement.Known(a3)
+	bne.w localKnown
+	cmpi.w #1, package.Context.Pass(a5)
+	bne.w bad
+localKnown
+	move.l registry.Placement.Base(a3), d1
+	move.l registry.Placement.Section(a3), d2
+	bra.w good
+external
+	andi.l #$7fffffff, d1
+	bsr.w importedTarget
+	bne.w bad
+	bra.w good
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d6/a0-a5
+	tst.l d0
+	rts
+	.bend  ; target
+
+; D1=zero-based import ordinal. D0/CCR=status,D1=address,D2=section.
+; Other registers preserved. Follow module-qualified forwarding through one
+; bounded interface reader. A module-count limit rejects malformed alias cycles.
+importedTarget	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	move.l d1, d4
+	tst.l State+Session.ImportValid
+	beq.w lookup
+	cmp.l State+Session.ImportOrdinal, d4
+	bne.w lookup
+	move.l State+Session.Module, d0
+	cmp.l State+Session.ImportModule, d0
+	bne.w lookup
+	move.l State+Session.TargetModule, d6
+	move.l State+Session.TargetFragment, d2
+	move.l State+Session.TargetOffset, d5
+	bra.w locate
+lookup
+	clr.l State+Session.ImportValid
+	movea.l State+Session.Registry, a0
+	move.l registry.State.Modules+memory.Block.Used(a0), d7
+	moveq #registry.MODULE_BYTES, d0
+	divu.l d0, d7
+	lea InterfaceReader, a0
+	movea.l State+Session.Registry, a1
+	move.l State+Session.Module, d1
+	jsr interfaceStore.select
+	bne.w bad
+	move.l d4, d1
+	jsr interfaceStore.importRow
+	bne.w bad
+	move.l interface.Import.Entity(a1), d5
+	move.l interface.Import.Dependency(a1), d1
+dependency
+	tst.l d7
+	beq.w bad
+	subq.l #1, d7
+	jsr interfaceStore.dependencyName
+	bne.w bad
+	move.l d1, d2
+	movea.l State+Session.Registry, a0
+	jsr registry.findObject
+	bne.w bad
+	move.l d1, d6
+	movea.l a0, a1
+	lea InterfaceReader, a0
+	jsr interfaceStore.select
+	bne.w bad
+	move.l d5, d1
+	jsr interfaceStore.valueRow
+	bne.w bad
+	cmpi.l #values.FORWARDED_ENTITY, values.Export.Kind(a1)
+	bne.w address
+	move.l values.Export.High(a1), d5
+	move.l values.Export.Low(a1), d1
+	bra.w dependency
+address
+	cmpi.l #values.FRAGMENT_ADDRESS, values.Export.Kind(a1)
+	bne.w bad
+	move.l values.Export.Low(a1), d5
+	move.l values.Export.High(a1), d2
+	move.l d6, State+Session.TargetModule
+	move.l d2, State+Session.TargetFragment
+	move.l d5, State+Session.TargetOffset
+	move.l State+Session.Module, State+Session.ImportModule
+	move.l d4, State+Session.ImportOrdinal
+	move.l #1, State+Session.ImportValid
+locate
+	move.l d6, d1
+	movea.l State+Session.Registry, a0
+	jsr registry.locate
+	bne.w bad
+	cmp.l image.Block.Extent(a2), d5
+	bhi.w bad
+	tst.l registry.Placement.Known(a3)
+	bne.w known
+	movea.l State+Session.Frame, a0
+	movea.l assembly.Frame.Context(a0), a0
+	cmpi.w #1, package.Context.Pass(a0)
+	bne.w bad
+known
+	move.l registry.Placement.Base(a3), d1
+	add.l d5, d1
+	bcs.w bad
+	move.l registry.Placement.Section(a3), d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d3-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; importedTarget
+
+; Link resolver. D2 identifies the opaque patch program. Hunk long fields
+; encode offsets within the target section; VM branch recipes use addresses
+; within the same global section so loader movement preserves their result.
+resolve	.block
+	movem.l d2-d4/a0-a2, -(sp)
+	move.l d2, d4
+	bsr.w target
+	bne.w done
+	cmpi.l #image.PROGRAM_ABSOLUTE, d4
+	beq.w absolute
+	movea.l State+Session.Placement, a0
+	cmp.l registry.Placement.Section(a0), d2
+	bne.w bad
+	bra.w done
+absolute
+	move.l d1, d3
+	move.l d2, d1
+	addq.l #1, d1
+	movea.l State+Session.Frame, a2
+	movea.l assembly.Frame.Context(a2), a2
+	jsr references.sectionBase
+	bne.w done
+	sub.l d1, d3
+	move.l d3, d1
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d4/a0-a2
+	tst.l d0
+	rts
+	.bend  ; resolve
+
+; Package-owned instruction patch execution, preserving its exact recipe ABI.
+patch	.block
+	move.l a0, -(sp)
+	movea.l State+Session.Frame, a0
+	movea.l assembly.Frame.Context(a0), a0
+	movea.l package.Context.Package(a0), a0
+	jsr encoding.patchPosition
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; patch
+
+; Refresh public numeric labels; private lexical IDs never enter global cells.
+; D0/CCR=status, other registers preserved.
+publishAddresses	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l State+Session.Registry, a0
+	move.l registry.State.Addresses+memory.Block.Used(a0), d7
+	movea.l registry.State.Addresses+memory.Block.Pointer(a0), a6
+	movea.l State+Session.Frame, a4
+	movea.l assembly.Frame.Context(a4), a5
+	movea.l State+Session.Placement, a3
+next
+	tst.l d7
+	beq.w good
+	move.l registry.Address.Module(a6), d0
+	cmp.l State+Session.Module, d0
+	bne.w advance
+	move.l registry.Address.Fragment(a6), d0
+	cmp.l State+Session.Fragment, d0
+	bne.w advance
+	move.l registry.Address.Symbol(a6), d1
+	cmp.l package.Context.Count(a5), d1
+	bhs.w bad
+	move.l registry.Placement.Base(a3), d2
+	add.l registry.Address.Offset(a6), d2
+	bcs.w bad
+	movea.l package.Context.Values(a5), a1
+	move.l d1, d0
+	lsl.l #3, d0
+	move.l d2, exprvm.Value.Low(a1, d0.l)
+	clr.l exprvm.Value.High(a1, d0.l)
+	movea.l package.Context.Defined(a5), a1
+	move.b #1, 0(a1, d1.l)
+	movea.l package.Context.SectionIds(a5), a1
+	move.l registry.Placement.Section(a3), d0
+	addq.l #1, d0
+	move.b d0, 0(a1, d1.l)
+advance
+	adda.w #registry.ADDRESS_BYTES, a6
+	subi.l #registry.ADDRESS_BYTES, d7
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; publishAddresses
+
+; Absolute fields have the same section/offset callback as shared DATA and
+; instruction emission. Relative recipe programs emit no Hunk relocation.
+; Forward the linked addend and any external global source identity. Internal
+; fragment targets have no invented source symbol and retain NO_BASE.
+publishRelocations	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l Link+image.LinkFrame.Image, a6
+	move.l image.Header.RelocCount(a6), d7
+	movea.l a6, a5
+	adda.l image.Header.Relocs(a6), a5
+next
+	tst.l d7
+	beq.w good
+	move.l image.Reloc.Block(a5), d0
+	cmp.l State+Session.Fragment, d0
+	bne.w advance
+	cmpi.l #image.PROGRAM_ABSOLUTE, image.Reloc.Program(a5)
+	bne.w advance
+	move.l image.Reloc.Target(a5), d1
+	bsr.w target
+	bne.w bad
+	move.l d2, d6
+	movea.l State+Session.Placement, a3
+	move.l registry.Placement.Base(a3), d5
+	move.l registry.Placement.Section(a3), d1
+	addq.l #1, d1
+	movea.l State+Session.Frame, a0
+	movea.l assembly.Frame.Context(a0), a2
+	jsr references.sectionBase
+	bne.w bad
+	sub.l d1, d5
+	bcs.w bad
+	add.l image.Reloc.Offset(a5), d5
+	bcs.w bad
+	move.l registry.Placement.Section(a3), d0
+	move.l d6, d1
+	move.l d5, d2
+	movea.l Buffer+memory.Block.Pointer, a1
+	move.l image.Reloc.Offset(a5), d4
+	move.l 0(a1, d4.l), d4
+	move.l image.Reloc.Target(a5), d3
+	btst #31, d3
+	bne.w externalIdentity
+	move.l #references.NO_BASE, d3
+	bra.w relocationReady
+externalIdentity
+	; Keep the relocation's section and patch offset separate from the
+	; provider callback's consumer-module/import-ordinal arguments.
+	movem.l d0-d2/d4/a0, -(sp)
+	move.l d3, d2
+	andi.l #$7fffffff, d2
+	movea.l State+Session.ImportResolver, a1
+	cmpa.w #0, a1
+	beq.w noSource
+	movea.l State+Session.ImportContext, a0
+	move.l State+Session.Module, d1
+	jsr (a1)
+	move.l d1, d3
+	tst.l d0
+	movem.l (sp)+, d0-d2/d4/a0
+	bne.w bad
+	bra.w relocationReady
+noSource
+	move.l #references.NO_BASE, d3
+	movem.l (sp)+, d0-d2/d4/a0
+relocationReady
+	movea.l assembly.Frame.AddReloc(a0), a1
+	cmpa.w #0, a1
+	beq.w bad
+	jsr (a1)
+	bne.w bad
+advance
+	adda.w #image.RELOC_BYTES, a5
+	subq.l #1, d7
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; publishRelocations
+	.endsection
+	.endmodule

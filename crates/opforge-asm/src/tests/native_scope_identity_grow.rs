@@ -9,9 +9,9 @@ fn growth_image(dir: &Path) -> (Vec<u8>, String) {
         .join("../..")
         .canonicalize()
         .unwrap();
-    let source = fs::read_to_string(root.join(
-        "native/motorola68000/amigaos/test-harnesses/experimental/scope_identity_growth.asm",
-    ))
+    let source = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/scope_identity_growth.asm"),
+    )
     .unwrap();
     let entry = dir.join("entry.asm");
     fs::write(&entry, &source).unwrap();
@@ -25,6 +25,8 @@ fn growth_image(dir: &Path) -> (Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         source_root.to_string_lossy().into_owned(),
+        "-I".into(),
+        source_root.join("amigaos").to_string_lossy().into_owned(),
         "-I".into(),
         source_root
             .join("amigaos/debug")

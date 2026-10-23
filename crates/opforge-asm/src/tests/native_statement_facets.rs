@@ -31,9 +31,9 @@ fn assemble(input: &[u8]) -> (Scratch, Vec<u8>, String) {
     std::fs::create_dir(&path).unwrap();
     let scratch = Scratch(path);
     std::fs::write(scratch.0.join("statement-facets-cases.bin"), input).unwrap();
-    let source = std::fs::read_to_string(repo.join(
-        "native/motorola68000/amigaos/test-harnesses/experimental/statement_facets_harness.asm",
-    ))
+    let source = std::fs::read_to_string(
+        repo.join("native/motorola68000/amigaos/tests/assembler/statement_facets_harness.asm"),
+    )
     .unwrap();
     let entry = scratch.0.join("entry.asm");
     std::fs::write(&entry, &source).unwrap();
@@ -44,6 +44,10 @@ fn assemble(input: &[u8]) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         repo.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        repo.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

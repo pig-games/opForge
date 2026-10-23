@@ -50,27 +50,17 @@ fi
 
 args=(
   --cpu 68020
-  -M native/motorola68000/amigaos/opforge-cli
-  -M native/motorola68000/amigaos/tkpkg
-  -M native/motorola68000/amigaos/tkvm
-  -M native/motorola68000/amigaos/test-harnesses/tkvm
-  -M native/motorola68000/amigaos/prvm
-  -M native/motorola68000/amigaos/exprvm
-  -M native/motorola68000/amigaos/opcore
-  -M native/motorola68000/amigaos/opasm
-  -M native/motorola68000/amigaos/debug
+  -M native/motorola68000/amigaos
   -I native/motorola68000/amigaos/debug
+  -I native/motorola68000/amigaos/vm/tkvm
+  -I native/motorola68000/amigaos/vm/encoding
   -i native/motorola68000/amigaos/main.asm
-  -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_debug_cli.asm
-  -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_line_iterator_smoke.asm
-  -i native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm
-  -i native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_entry.asm
-  -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm
-  -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_test_input.asm
-  -i native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm
-  -i native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm
-  -i native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm
-  -i native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm
+  -i native/motorola68000/amigaos/tests/prvm/prvm_debug_cli.asm
+  -i native/motorola68000/amigaos/tests/prvm/prvm_line_iterator_smoke.asm
+  -i native/motorola68000/amigaos/tests/prvm/prvm_smoke.asm
+  -i native/motorola68000/amigaos/tests/tkvm/tokvm_interpreter.asm
+  -i native/motorola68000/amigaos/tests/tkvm/tokvm_test_input.asm
+  -i native/motorola68000/amigaos/tests/debug/debug_contract_harness.asm
   "${mode}"
   --fmt-config "${config_path}"
 )

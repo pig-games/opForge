@@ -13,10 +13,11 @@ from pathlib import Path
 
 
 EXPECTED_TESTS = (
-    "native_macro_invocation_fixture_fs_uae",
-    "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection",
+    "compact_opcore_corpus_fs_uae",
+    "compact_mos_corpus_fs_uae",
+    "compact_motorola68000_corpus_fs_uae",
 )
-COMMAND_TEMPLATE = "cargo test -p asm {name} -- --nocapture --test-threads=1"
+COMMAND_TEMPLATE = "cargo test -p asm {name} -- --ignored --nocapture --test-threads=1"
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 
 

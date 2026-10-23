@@ -172,7 +172,7 @@ fn volume_cli(files: &[(&str, &str)], roots: &[&str], expected: Option<&[u8]>) {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.join("build"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::ExternalOnly,
     )
     .unwrap();

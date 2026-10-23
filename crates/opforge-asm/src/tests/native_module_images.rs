@@ -34,30 +34,22 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
     .unwrap();
     let input = dir.join("module_image_probe.asm");
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_image_probe.asm",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_image_probe.asm"),
         &input,
     )
     .unwrap();
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_data_delta_checks.i",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_data_delta_checks.i"),
         dir.join("module_data_delta_checks.i"),
     )
     .unwrap();
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_runtime_reloc_checks.i",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_runtime_reloc_checks.i"),
         dir.join("module_runtime_reloc_checks.i"),
     )
     .unwrap();
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_iface_header_checks.i",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_iface_header_checks.i"),
         dir.join("module_iface_header_checks.i"),
     )
     .unwrap();
@@ -68,6 +60,8 @@ fn build_probe(root: &Path, dir: &Path, disk: bool) -> Vec<u8> {
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),
         // Existing registry counters prove metadata lookup does not read payload.
         "--define".to_owned(),

@@ -4,7 +4,7 @@ use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
-const OBSERVER: &str = "native/motorola68000/amigaos/debug/opforge_hotspot_profile.asm";
+const OBSERVER: &str = "native/motorola68000/amigaos/debug/hotspot_profile.asm";
 const GATES: [&str; 3] = [
     "OPFORGE_DEBUG_CONTRACTS",
     "OPFORGE_MEMORY_TELEMETRY",
@@ -53,7 +53,7 @@ fn assemble(source: &str, defines: &[String], output: &str) -> Vec<u8> {
 
 fn wrapper(sites: &str, stub: bool) -> String {
     let stub = if stub {
-        ".module debug.amigaos.hotspot_profile\n.cpu 68020\n.pub\nARITHMETIC_OVERFLOW = 32\n.section code,kind=code\nclear .block\n rts\n.bend\nenter .block\n rts\n.bend\nleave .block\n rts\n.bend\nreport .block\n rts\n.bend\n.endsection\n.section code,kind=code\nErrors .long 0\nStopped .long 0\nCounters .long 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n.endsection\n.endmodule\n"
+        ".module opforge.debug.hotspot_profile\n.cpu 68020\n.pub\nARITHMETIC_OVERFLOW = 32\n.section code,kind=code\nclear .block\n rts\n.bend\nenter .block\n rts\n.bend\nleave .block\n rts\n.bend\nreport .block\n rts\n.bend\n.endsection\n.section code,kind=code\nErrors .long 0\nStopped .long 0\nCounters .long 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n.endsection\n.endmodule\n"
     } else {
         ""
     };
@@ -369,7 +369,7 @@ fn probe_source(period: u32, seed: u32) -> String {
     format!(
         r#".module probe
 .cpu 68020
-.use debug.amigaos.memory_profile as bridge
+.use opforge.debug.memory_profile as bridge
 .include "hotspot_telemetry.i"
 .section entry,kind=code
 start .block
@@ -411,7 +411,7 @@ AfterCCR .res word,1
 .output "build/probe",format=hunk,sections=entry,code,data,bss
 .endmodule
 {observer}
-.module debug.amigaos.memory_profile
+.module opforge.debug.memory_profile
 .cpu 68020
 .pub
 .section code,kind=code

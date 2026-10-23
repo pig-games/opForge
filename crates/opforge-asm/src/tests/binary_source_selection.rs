@@ -347,10 +347,8 @@ fn binary_selection_self_host_movem_restore_native_parity_fs_uae() {
 #[test]
 #[ignore = "requires configured FS-UAE; full compact entry helper blocks"]
 fn binary_selection_compact_entry_helpers_native_parity_fs_uae() {
-    let entry = fs::read_to_string(
-        workspace_root().join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
-    )
-    .unwrap();
+    let entry =
+        fs::read_to_string(workspace_root().join("native/motorola68000/amigaos/main.asm")).unwrap();
     let helpers = entry
         .split_once("; A3=argument tail cursor, A1=256-byte destination.")
         .unwrap()

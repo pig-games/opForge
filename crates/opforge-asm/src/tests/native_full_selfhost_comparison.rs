@@ -49,17 +49,46 @@ fn module_comparison_policy_is_explicit() {
 
 // The existing runner captures files, not empty directories. This checks leaked
 // scratch payloads; the component probe separately checks private dir removal.
+fn is_capture_scratch_path(path: &Path) -> bool {
+    path.strip_prefix("Work")
+        .ok()
+        .and_then(Path::parent)
+        .is_some_and(|parent| {
+            parent.components().any(|component| {
+                component.as_os_str().to_str().is_some_and(|name| {
+                    name.strip_prefix("opfg").is_some_and(|suffix| {
+                        suffix.len() == 16 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit())
+                    })
+                })
+            })
+        })
+}
+
 pub(super) fn capture_scratch_files(run: &FsUaeSmokeRun) -> Vec<String> {
     run.captured_artifacts
         .keys()
-        .filter_map(|path| {
-            let relative = path.strip_prefix("Work").ok()?;
-            let directory = relative.components().next()?.as_os_str().to_str()?;
-            let suffix = directory.strip_prefix("opfg")?;
-            (suffix.len() == 16 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit()))
-                .then(|| path.to_string_lossy().into_owned())
-        })
+        .filter(|path| is_capture_scratch_path(path))
+        .map(|path| path.to_string_lossy().into_owned())
         .collect()
+}
+
+#[test]
+fn capture_cleanup_checks_nested_scratch_directories() {
+    for path in [
+        "Work/opfg0123456789abcdef/capture",
+        "Work/scratch/opfg0123456789abcdef/capture",
+    ] {
+        assert!(is_capture_scratch_path(Path::new(path)), "{path}");
+    }
+    for path in [
+        "Other/opfg0123456789abcdef/capture",
+        "Work/scratch/opfg0123456789abcdef.uaem",
+        "Work/scratch/opfg0123456789abcdef",
+        "Work/scratch/opfg0123/capture",
+        "Work/build/ofm/module.ofm",
+    ] {
+        assert!(!is_capture_scratch_path(Path::new(path)), "{path}");
+    }
 }
 
 #[test]
@@ -184,14 +213,11 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let source = directory.join("inputs/src");
     // Keep the source's explicit sections on .output, as the exporter does.
     // A CLI Hunk override creates another request without those sections.
-    let live_path = output.join("build/opforge_compact");
+    let live_path = output.join("build/opforge");
     let cli = Cli::parse_from([
         "opForge".into(),
         "-i".into(),
-        source
-            .join("experimental/opforge_compact_cli.asm")
-            .to_string_lossy()
-            .into_owned(),
+        source.join("main.asm").to_string_lossy().into_owned(),
         "--cpu".into(),
         "68020".into(),
         "-M".into(),
@@ -257,10 +283,11 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         .iter()
         .map(|value| value.as_str().unwrap())
         .collect::<Vec<_>>();
-    let command = module_command(&capture_command(
-        "-i src/experimental/opforge_compact_cli.asm --hunk Work:output.hunk -M src -I src/debug",
-        capture_mode,
-    ), input["module_mode"].as_str());
+    let command = module_command(
+        &capture_command("-i src/main.asm -M src -I src/debug", capture_mode)
+            .replace("--capture-dir Work:", "--capture-dir scratch"),
+        input["module_mode"].as_str(),
+    );
     let instrumented = define_strings.contains(&"OPFORGE_MEMORY_TELEMETRY");
     let command = if incremental {
         let cold_memory = if instrumented {
@@ -274,18 +301,27 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             ""
         };
         format!(
-            "--version\nCopy Work:build/opforge_compact Work:incremental_bootstrap\n\
+            "--version\nMakeDir Work:scratch\nCopy Work:build/opforge Work:incremental_bootstrap\n\
              C:Date >Work:cold.start\n\
+             Delete Work:build/opforge QUIET\n\
              Work:incremental_bootstrap {command} --rebuild >Work:cold.stdout\n\
              Echo $RC >Work:cold.rc\nC:Date >Work:cold.end\n\
-             Copy Work:output.hunk Work:cold.hunk\n{cold_memory}\
+             Copy Work:build/opforge Work:cold.hunk\n{cold_memory}\
+             Delete Work:build/opforge QUIET\n\
              C:Date >Work:warm.start\n\
              Work:incremental_bootstrap {command} >Work:warm.stdout\n\
              Echo $RC >Work:warm.rc\nC:Date >Work:warm.end\n{warm_memory}\
              C:Type Work:cold.stdout\nC:Type Work:warm.stdout"
         )
     } else {
-        command
+        // The source output shares the launcher's path. Remove it only after
+        // copying the bootstrap, so stale input bytes can never satisfy proof.
+        format!(
+            "--version\nMakeDir Work:scratch\n\
+             Copy Work:build/opforge Work:selfhost_bootstrap\n\
+             Delete Work:build/opforge QUIET\n\
+             Work:selfhost_bootstrap {command}"
+        )
     };
     let incremental_proof = [
         OpforgeNativeCliExpectedArtifact {
@@ -293,7 +329,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             rust_oracle: &oracle,
         },
         OpforgeNativeCliExpectedArtifact {
-            relative_path: "Work/output.hunk",
+            relative_path: "Work/build/opforge",
             rust_oracle: &oracle,
         },
         OpforgeNativeCliExpectedArtifact {
@@ -319,7 +355,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
             OpforgeNativeCliProof::ExactArtifacts(&incremental_proof)
         } else {
             OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/output.hunk",
+                relative_path: "Work/build/opforge",
                 rust_oracle: &oracle,
             }
         },
@@ -347,7 +383,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         fs::create_dir_all(destination.parent().unwrap()).unwrap();
         fs::write(destination, bytes).unwrap();
     }
-    // Source-directed self-host output also overwrites build/opforge_compact.
+    // Source-directed self-host output also overwrites build/opforge.
     // The recorded bootstrap identity must remain the actual input executable.
     let bootstrap_digest = opforge_self_host_package_digest(&image);
     assert_eq!(
@@ -387,7 +423,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
     let cache_reuse_verified = cache_counts.as_ref().is_none_or(|counts| {
         counts["cold_reused"] == 0
             && counts["cold_rebuilt"].as_u64().unwrap() > 0
-            && counts["warm_reused"].as_u64().unwrap() > 0
+            && counts["warm_reused"] == counts["cold_rebuilt"]
+            && counts["warm_rebuilt"] == 0
     });
     if incremental {
         assert_eq!(phase_artifact("cold.rc").as_slice(), b"0\n");
@@ -400,7 +437,7 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         .iter()
         .filter_map(|(path, bytes)| {
             let relative = path.strip_prefix("Work").ok()?;
-            let directory = relative.components().next()?.as_os_str().to_str()?;
+            let directory = relative.parent()?.file_name()?.to_str()?;
             ((directory == "objects"
                 || directory.strip_prefix("objects-").is_some_and(|suffix| {
                     !suffix.is_empty() && suffix.bytes().all(|b| b.is_ascii_digit())

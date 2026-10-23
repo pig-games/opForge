@@ -319,7 +319,7 @@ fn native_source_for_cpu(source: String, cpu: &str) {
         let record = &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")];
         check_memory(record, 0);
     }
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_MACRO_CALL source_bytes={} output_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={}", source.len(), expected.len(), runs[0].start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total());
 }
 
@@ -339,7 +339,7 @@ fn compact_macro_call_nested_fs_uae() {
 // calls must preserve their argument API while emitting no telemetry code.
 fn telemetry_source() -> String {
     let telemetry = ".include \"memory_telemetry.i\"";
-    format!(".module experimental.amigaos.binary_app\n.cpu m68020\n{telemetry}\nexecute .block\n.MEMORY_PHASE #0\n.byte 1\n.bend\n.byte execute\n.endmodule\n")
+    format!(".module opforge.assembler.driver\n.cpu m68020\n{telemetry}\nexecute .block\n.MEMORY_PHASE #0\n.byte 1\n.bend\n.byte execute\n.endmodule\n")
 }
 
 // Parse the actual diagnostic call sites, not just their definitions. The former
@@ -347,9 +347,8 @@ fn telemetry_source() -> String {
 // tokens fit; disabled macros must still accept their complete invocation.
 fn preparation_telemetry_source() -> String {
     let telemetry = ".include \"memory_telemetry.i\"";
-    let diagnostics = include_str!(
-        "../../../../native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
-    );
+    let diagnostics =
+        include_str!("../../../../native/motorola68000/amigaos/assembler/driver_diagnostics.i");
     let calls = diagnostics
         .lines()
         .filter(|line| {
@@ -365,7 +364,7 @@ fn preparation_telemetry_source() -> String {
         .iter()
         .any(|line| line.trim_start().starts_with(".MEMORY_PREPARATION_RECORD ")));
     format!(
-        ".module proof.frontend\n.cpu m68020\n.pub\nFrame .struct\nOutput .long ?\nCapacity .long ?\nUsed .long ?\nNameCount .long ?\n.endstruct\nPreparationStage=0\nPreparationInput=0\n.endmodule\n.module experimental.amigaos.binary_app\n.cpu m68020\n.use proof.frontend as frontend\nDosBase=0\nInAssembly=0\nFront=0\nPROGRESS_PREPARATION_FAILURE=301\n{telemetry}\nexecute .block\n{}\n.byte 1\n.bend\n.byte execute\n.endmodule\n",
+        ".module proof.frontend\n.cpu m68020\n.pub\nFrame .struct\nOutput .long ?\nCapacity .long ?\nUsed .long ?\nNameCount .long ?\n.endstruct\nPreparationStage=0\nPreparationInput=0\n.endmodule\n.module opforge.assembler.driver\n.cpu m68020\n.use proof.frontend as frontend\nDosBase=0\nInAssembly=0\nFront=0\nPROGRESS_PREPARATION_FAILURE=301\n{telemetry}\nexecute .block\n{}\n.byte 1\n.bend\n.byte execute\n.endmodule\n",
         calls.join("\n")
     )
 }
@@ -409,7 +408,7 @@ fn compact_macro_telemetry_fs_uae() {
 }
 
 fn inactive_dotted_operand_source() -> String {
-    r#".module experimental.amigaos.binary_app
+    r#".module opforge.assembler.driver
 .cpu m68020
 MEMORY_PHASE .macro value
 .ifdef OPFORGE_DEBUG_CONTRACTS
@@ -488,7 +487,7 @@ fn telemetry_family_source() -> String {
         .enumerate()
         .map(|(index, call)| format!("{call}\n.byte {}\n", index + 1))
         .collect::<String>();
-    format!(".module experimental.amigaos.binary_app\n.cpu m68020\n{telemetry}\nexecute .block\n{body}.bend\n.byte execute\n.endmodule\n")
+    format!(".module opforge.assembler.driver\n.cpu m68020\n{telemetry}\nexecute .block\n{body}.bend\n.byte execute\n.endmodule\n")
 }
 
 #[test]
@@ -524,7 +523,7 @@ fn telemetry_growth_source() -> String {
         format!("leaf{}", "z".repeat(45)),
     ]
     .join(".");
-    telemetry_arena_source(180, 72).replacen("experimental.amigaos.binary_app", &module, 1)
+    telemetry_arena_source(180, 72).replacen("opforge.assembler.driver", &module, 1)
 }
 
 #[test]

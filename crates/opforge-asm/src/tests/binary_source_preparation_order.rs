@@ -166,8 +166,8 @@ fn compact_preparation_order_graph_rejections_fs_uae() {
 #[test]
 #[ignore = "requires configured FS-UAE; real self-host ABI reservation declared after importer"]
 fn compact_preparation_order_real_abi_fs_uae() {
-    let abi = include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_abi.asm");
-    let text = format!(".module app\n.cpu m68020\n.use prvm.amigaos.abi as abi\nFrame .struct\nRequest .res abi.PRVM_REQUEST_FRAME_SIZE\nResult .res 32\n.endstruct\n.byte Frame.Result\n.endmodule\n{abi}");
+    let abi = include_str!("../../../../native/motorola68000/amigaos/vm/prvm/abi.asm");
+    let text = format!(".module app\n.cpu m68020\n.use opforge.vm.prvm.abi as abi\nFrame .struct\nRequest .res abi.PRVM_REQUEST_FRAME_SIZE\nResult .res 32\n.endstruct\n.byte Frame.Result\n.endmodule\n{abi}");
     let files = [("main.asm", text.as_str())];
     let expected = oracle_with_roots(&files, &[]).unwrap();
     assert_eq!(expected, [112]);

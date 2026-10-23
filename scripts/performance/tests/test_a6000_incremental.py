@@ -79,18 +79,19 @@ class IncrementalPairTests(unittest.TestCase):
         self.assertIn("MakeDir scratch", script)
         self.assertNotIn("Delete build/ofm", script)
         self.assertNotIn("Delete opforge", script)
-        self.assertEqual(script.count("Delete build/opforge_compact"), 2)
+        self.assertEqual(script.count("Delete build/opforge"), 2)
         for phase in pair.PHASES:
             self.assertIn(f"FailAt 10\nIf EXISTS {phase}", script)
             self.assertIn(f"Delete {phase} ALL", script)
-            self.assertIn(f"Copy build/opforge_compact {phase}/output.hunk\nEcho $RC >{phase}/copy-exitcode", script)
+            self.assertIn(f"Copy build/opforge {phase}/output.hunk\nEcho $RC >{phase}/copy-exitcode", script)
             self.assertIn(f"Echo $RC >{phase}/exitcode\nC:Date >{phase}/end.time", script)
             self.assertIn(pair.phase_marker("uuid digest", phase), script)
 
     def test_dry_run_uses_transport_without_network(self):
         manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "embedded",
-                    "output_package_storage": "embedded", "native_output_file": "build/opforge_compact",
-                    "command": "opforge -i src/main.asm", "over_classic_limit_components": []}
+                    "output_package_storage": "embedded", "native_output_file": "build/opforge",
+                    "capture_mode": "disk",
+                    "command": "opforge -i src/main.asm --capture-dir scratch", "over_classic_limit_components": []}
         with mock.patch.object(pair.base, "load_bundle", return_value=(manifest, {}, b"oracle", "digest")), \
              mock.patch.object(pair.base.subprocess, "run", side_effect=AssertionError("network")), \
              mock.patch.object(pair.base.tempfile, "mkdtemp", return_value=str(self.root / "prepared")):
@@ -98,6 +99,14 @@ class IncrementalPairTests(unittest.TestCase):
             self.assertEqual(pair.main(["--bundle", str(self.root), "--dry-run"]), 0)
         script = next((self.root / "prepared").glob("*/run-selfhost")).read_text()
         self.assertIn(pair.PAIR_PROTOCOL, script)
+
+    def test_rejects_resident_capture_bundle(self):
+        manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "embedded",
+                    "output_package_storage": "embedded", "native_output_file": "build/opforge",
+                    "capture_mode": "resident"}
+        with mock.patch.object(pair.base, "load_bundle", return_value=(manifest, {}, b"", "digest")):
+            with self.assertRaisesRegex(ValueError, "disk-capture"):
+                pair.load_bundle(self.root)
 
     def test_rejects_instrumented_bundle(self):
         with mock.patch.object(pair.base, "load_bundle", return_value=({"bootstrap_defines": ["debug"]}, {}, b"", "digest")):

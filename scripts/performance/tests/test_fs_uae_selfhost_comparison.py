@@ -43,7 +43,7 @@ class FullComparisonTests(unittest.TestCase):
                                       candidate_bundle=root / "candidate", baseline_source_root=root / "source",
                                       baseline_memory_bundle=root / "old-memory", candidate_memory_bundle=root / "new-memory")
             manifest = {"bootstrap_package_storage": "embedded", "bootstrap_defines": []}
-            old = {"src/experimental/opforge_compact_cli.asm": b"old source", "opforge": b"old image"}
+            old = {"src/main.asm": b"old source", "opforge": b"old image"}
             candidate = dict(old, opforge=b"new image")
             releases = [(old, "old-case", {"comparison_role": "baseline", "workload_sha256": "workload"}),
                         (candidate, "new-case", {"comparison_role": "candidate"})]
@@ -58,12 +58,16 @@ class FullComparisonTests(unittest.TestCase):
                                         "native_validation": "not_run"},
                                  dict(old, opforge=role.encode()), b"old oracle", role, role, {}))
             own = dict(candidate)
-            own["src/experimental/opforge_compact_cli.asm"] = b"new source"
+            own["src/main.asm"] = b"new source"
             with (mock.patch.object(module.comparison, "load_comparison", return_value=(manifest, b"old oracle", releases)),
                   mock.patch.object(module.comparison, "load_memory_cases", return_value=memories),
                   mock.patch.object(module.runner, "load_bundle", return_value=(manifest, own, b"new image", "selfhost"))):
                 cases = module.prepare_cases(args)
             self.assertEqual(len(cases), 5)
+            for path in cases:
+                spec = json.loads(path.read_text())
+                self.assertEqual(spec["capture_mode"], "disk")
+                self.assertEqual(spec["native_output_file"], "build/opforge")
             specifications = [json.loads(path.read_text()) for path in cases]
             self.assertEqual([spec["record_header_bytes"] for spec in specifications], [None, None, 64, 56, None])
             for spec in specifications[2:4]:
@@ -76,8 +80,8 @@ class FullComparisonTests(unittest.TestCase):
             self.assertEqual([spec["oracle"]["digest"] for spec in specifications[:4]],
                              [module.runner.fnv(b"old oracle")] * 4)
             for path in cases[:4]:
-                self.assertEqual((path.parent / "inputs/src/experimental/opforge_compact_cli.asm").read_bytes(), b"old source")
-            self.assertEqual((cases[4].parent / "inputs/src/experimental/opforge_compact_cli.asm").read_bytes(), b"new source")
+                self.assertEqual((path.parent / "inputs/src/main.asm").read_bytes(), b"old source")
+            self.assertEqual((cases[4].parent / "inputs/src/main.asm").read_bytes(), b"new source")
 
     def test_failed_case_does_not_prevent_later_case_execution(self):
         with tempfile.TemporaryDirectory() as directory:

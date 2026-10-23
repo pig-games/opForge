@@ -12,7 +12,7 @@ fn clone_image(dir: &Path) -> (Vec<u8>, String) {
         .canonicalize()
         .unwrap();
     let source = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/test-harnesses/experimental/macro_plan_clone.asm"),
+        root.join("native/motorola68000/amigaos/tests/assembler/macro_plan_clone.asm"),
     )
     .unwrap();
     let entry = dir.join("entry.asm");
@@ -24,6 +24,10 @@ fn clone_image(dir: &Path) -> (Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

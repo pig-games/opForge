@@ -250,7 +250,7 @@ mod tests {
                 )
             })
             .unwrap();
-        let native = include_str!("../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
+        let native = include_str!("../../../native/motorola68000/amigaos/vm/tkvm/runtime.asm");
         let declared = native
             .lines()
             .find(|line| line.starts_with("TK_KIND_QUESTION "))

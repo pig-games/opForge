@@ -102,7 +102,7 @@ fn native_cpu(input: String, cpu: &str) {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!(
         "TEXT_RECIPE_NATIVE cpu={cpu} image_bytes={} linked_reserved_bytes={}",
         image.len(),

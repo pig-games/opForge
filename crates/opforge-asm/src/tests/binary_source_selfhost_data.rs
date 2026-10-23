@@ -3,7 +3,7 @@ use super::*;
 
 const ALPHABET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_";
 const DEMO: &str =
-    include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_demo_program.asm");
+    include_str!("../../../../native/motorola68000/amigaos/vm/tkvm/demo_program.asm");
 
 fn quoted_flat_source() -> String {
     format!(".cpu m68020\n.org 0\n.byte \"{ALPHABET}\"\n.end\n")
@@ -24,7 +24,7 @@ fn quoted_hunk_source() -> String {
 }
 
 fn demo_hunk_source() -> String {
-    data_hunk_source(".use tkvm.amigaos.demo_program\n", "", DEMO)
+    data_hunk_source(".use opforge.vm.tkvm.demo_program\n", "", DEMO)
 }
 
 fn root_demo_hunk_source() -> String {

@@ -17,7 +17,6 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
         paths = set(FORBIDDEN_IMPORTS) | set(RETAINED_OWNER_IMPORTS)
-        paths.add("native/motorola68000/amigaos/tkpkg/tkpkg_service.asm")
         for relative in paths:
             path = self.root / relative
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -34,22 +33,21 @@ class NativeRuntimeBoundaryContractTests(unittest.TestCase):
         self.assertEqual(validate(self.root), [])
 
     def test_prohibited_reverse_import_fails(self):
-        path = self.root / "native/motorola68000/amigaos/prvm/prvm_runtime.asm"
-        path.write_text(".use opasm.amigaos.engine\n")
+        path = self.root / "native/motorola68000/amigaos/vm/prvm/runtime.asm"
+        path.write_text(".use opforge.assembler.driver\n")
         self.assertTrue(any("prohibited current reverse import" in error
                             for error in validate(self.root)))
 
     def test_retained_owner_import_change_fails(self):
-        path = self.root / "native/motorola68000/amigaos/opasm/opasm_engine.asm"
+        path = self.root / "native/motorola68000/amigaos/cli/entry.asm"
         path.write_text("")
         self.assertTrue(any("retained-owner imports changed" in error
                             for error in validate(self.root)))
 
-    def test_obsolete_service_to_engine_import_fails(self):
-        path = self.root / "native/motorola68000/amigaos/tkpkg/tkpkg_service.asm"
-        path.write_text(".use opasm.amigaos.engine\n")
-        self.assertTrue(any("obsolete service-to-engine import" in error
-                            for error in validate(self.root)))
+    def test_vm_wire_contract_import_remains_allowed(self):
+        path = self.root / "native/motorola68000/amigaos/vm/exvm/runtime.asm"
+        path.write_text(".use opforge.assembler.source.records\n")
+        self.assertEqual(validate(self.root), [])
 
 
 if __name__ == "__main__":

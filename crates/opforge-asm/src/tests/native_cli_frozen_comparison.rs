@@ -171,7 +171,7 @@ fn oracle(root: &Path, entry: &str, output: &Path, binary: bool) -> Vec<u8> {
     fs::read(output.join(if binary {
         "output.bin"
     } else {
-        "build/opforge_compact"
+        "build/opforge"
     }))
     .unwrap()
 }
@@ -246,7 +246,7 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
         std::env::var("OPFORGE_CLI_COMPARISON_WORKLOAD").unwrap_or_else(|_| "all".into());
     assert!(matches!(workloads.as_str(), "all" | "full" | "controls"));
     let disk = match std::env::var("OPFORGE_CLI_COMPARISON_CAPTURE") {
-        Err(std::env::VarError::NotPresent) => false,
+        Err(std::env::VarError::NotPresent) => true,
         Ok(value) if value == "resident" => false,
         Ok(value) if value == "disk" => true,
         value => panic!("invalid comparison capture policy: {value:?}"),
@@ -338,7 +338,7 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
         frozen["source_manifest_digest"]
     );
     let package_asset = format!(
-        "src/experimental/packages/{}",
+        "src/packages/{}",
         frozen["runtime_package_file"].as_str().unwrap()
     );
     assert_eq!(
@@ -352,10 +352,10 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
 
     assert_eq!(files.len() as u64, frozen["source_files"].as_u64().unwrap());
     let entry = frozen["entry"].as_str().unwrap();
-    assert_eq!(entry, "src/experimental/opforge_compact_cli.asm");
+    assert_eq!(entry, "src/main.asm");
     assert_eq!(frozen["module_roots"], json!(["src"]));
     assert_eq!(frozen["include_roots"], json!(["src/debug"]));
-    let exported_command = format!("opforge -i {entry} --hunk output.hunk -M src -I src/debug");
+    let exported_command = format!("opforge -i {entry} -M src -I src/debug --capture-dir scratch");
     assert_eq!(frozen["command"], exported_command);
     // The source already declares its Hunk output. Measure that ordinary build
     // once, rather than adding a second CLI output and repeating final linking.
@@ -402,7 +402,7 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
             &files,
             &full_oracle,
             full_command.as_str(),
-            "Work/build/opforge_compact",
+            "Work/build/opforge",
         ),
         (
             "small",
@@ -462,6 +462,14 @@ fn compare(candidate_only: bool, module_policy_comparison: bool, measurement: Me
                     ""
                 }
             );
+            // The launcher is staged at the product output path. Delete it
+            // after preserving a separate executable so proof requires a fresh
+            // source-directed artifact even when it equals the bootstrap.
+            let command = if workload == "full" {
+                format!("--version\nCopy Work:build/opforge Work:selfhost_bootstrap\nDelete Work:build/opforge\nWork:selfhost_bootstrap {command}")
+            } else {
+                command
+            };
             for round in 1..=rounds {
                 let case = OpforgeNativeCliParityCase {
                     name: workload,

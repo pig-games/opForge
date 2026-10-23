@@ -1,0 +1,3124 @@
+; Numeric instruction selection for packed source records.
+; @opforge-owner: opforge.assembler.layout.encoding
+
+	.module opforge.assembler.layout.encoding
+	.cpu 68020
+	.include "telemetry_macros.i"
+	.include "memory_telemetry.i"
+	.use opforge.packages.format as package
+	.use opforge.assembler.layout.state as state
+	.use opforge.assembler.source.records as source
+	.use opforge.assembler.prepare.shapes as shapes
+	.use opforge.assembler.prepare.operand_wrappers as wrappers
+	.use opforge.assembler.prepare.tuples as tuples
+	.use opforge.assembler.prepare.products as products
+	.use opforge.assembler.prepare.operand_paths as paths
+	.use opforge.assembler.layout.dependencies as dependencies
+	.use opforge.assembler.symbols.mutable as mutable
+	.use opforge.assembler.layout.hunk_references as references
+	.use opforge.assembler.prepare.register_mask as register_mask
+	.use opforge.assembler.prepare.expression as expression
+	.use opforge.vm.exprvm.runtime as exprvm
+	.use opforge.vm.encoding.runtime as encoding
+	.use opforge.vm.value.runtime as value
+	.pub
+REQUEST_AUTO = encoding.REQUEST_AUTO
+SCALAR_UNHANDLED = 0
+SCALAR_HANDLED = 1
+SCALAR_INVALID = 2
+	.priv
+
+TOKEN_SYMBOL_0 = 0
+TOKEN_SYMBOL_1 = 1
+TOKEN_COMMA = 4
+TOKEN_DOT = 7
+TOKEN_HASH = 8
+TOKEN_OPEN_BRACKET = 10
+TOKEN_CLOSE_BRACKET = 11
+TOKEN_OPEN_PAREN = 14
+TOKEN_CLOSE_PAREN = 15
+TOKEN_PLUS = 18
+TOKEN_MINUS = 19
+
+SHAPE_EMPTY = package.SHAPE_EMPTY
+SHAPE_SINGLE = package.SHAPE_SINGLE
+SHAPE_PREFIXED = package.SHAPE_PREFIXED
+SHAPE_PREFIXED_PAIR = package.SHAPE_PREFIXED_PAIR
+SHAPE_PAIR = package.SHAPE_PAIR
+SHAPE_REGISTER_PAIR = package.SHAPE_REGISTER_PAIR
+SHAPE_VALUE_REGISTER = package.SHAPE_VALUE_REGISTER
+SHAPE_PREFIXED_VALUE = package.SHAPE_PREFIXED_VALUE
+SHAPE_REGISTER = package.SHAPE_REGISTER
+SHAPE_VALUE_PAIR = package.SHAPE_VALUE_PAIR
+SHAPE_VALUE_TRIPLE = package.SHAPE_VALUE_TRIPLE
+SHAPE_REGISTER_PREFIX_TRIPLE = package.SHAPE_REGISTER_PREFIX_TRIPLE
+SHAPE_VALUE_PREFIX_TRIPLE = package.SHAPE_VALUE_PREFIX_TRIPLE
+SHAPE_REGISTER_PREFIX_PAIR = package.SHAPE_REGISTER_PREFIX_PAIR
+SHAPE_REGISTER_VALUE_TRIPLE = package.SHAPE_REGISTER_VALUE_TRIPLE
+SHAPE_REGISTER_TRIPLE = package.SHAPE_REGISTER_TRIPLE
+MAX_OPERANDS = 3
+
+RECIPE_NONE = 0
+RECIPE_U8 = 1
+RECIPE_U16 = 2
+RECIPE_REL8 = 3
+RECIPE_SEMANTIC_INPUTS = 4
+RECIPE_SEMANTIC_BRANCH = 5
+RECIPE_UNSUPPORTED = 6
+RECIPE_SEMANTIC_TABLE = 7
+RECIPE_SEMANTIC_SEQUENCE = 9
+
+PROGRAM_TABLE = 1
+PROGRAM_SEMANTIC = 2
+PROGRAM_VALUE = 3
+PROJECTION_EXPRESSION = 0
+PROJECTION_TARGET_MEMBER = 16
+PROJECTION_MEMBER_SHAPE = 19
+PROJECTION_WRAPPED_SCALAR = 20
+PROJECTION_TUPLE_NAMED = 21
+PROJECTION_SCALAR_EXPRESSION = 22
+PROJECTION_TUPLE_IDENTITY = 23
+PROJECTION_CALL_REGISTER = 24
+PROJECTION_HASH_SCALAR = 25
+PROJECTION_PATH = 26
+PROJECTION_CALL_WRAPPED_REGISTER = 27
+MISSING_PROGRAM = $ffff
+GEOMETRY_DEPENDENT_BIT = 0
+GEOMETRY_FIXUP_BIT = 1
+HEADER_BYTES = package.HEADER_BYTES
+ROW_BYTES = package.ROW_BYTES
+PROJECTION_BYTES = 12
+PROGRAM_BYTES = 12
+SEQUENCE_PHASE = package.Row.StateGuard; private row copy only
+; The branch VM consumes four fixed scalar records; no source tokens survive.
+	.priv
+ReplayInput	.struct
+Opcode	.res encoding.SCALAR_INPUT_BYTES
+Target	.res encoding.SCALAR_INPUT_BYTES
+Candidate	.res encoding.SCALAR_INPUT_BYTES
+Class	.res encoding.SCALAR_INPUT_BYTES
+	.endstruct
+REPLAY_INPUT_BYTES = ReplayInput.Class+encoding.SCALAR_INPUT_BYTES
+ScalarCall	.struct
+Cursor	.long ?
+Temporary	.long ?
+	.endstruct
+SCALAR_CALL_BYTES = ScalarCall.Temporary+4
+
+	.section bss, kind=bss
+	.priv
+OperandStart	.res long, MAX_OPERANDS
+OperandEnd	.res long, MAX_OPERANDS
+OperandCount	.res word, 1
+OperandShape	.res word, 1
+MemberMask	.res word, 1
+Unresolved	.res word, 1
+Records	.res byte, 128
+Execution	.res byte, encoding.CONTEXT_BYTES
+Output	.res byte, 4096
+FixupCount	.res word, 1
+FixupOffsets	.res long, 16
+FixupAddends	.res long, 16
+FixupWidths	.res word, 16
+FixupTargets	.res word, 16
+FixupIdentities	.res long, 16
+InputIdentities	.res long, 16
+PositionDependent	.res word, 1
+PositionProofCount	.res word, 1
+PositionProofTarget	.res word, 1
+PositionFixupCount	.res long, 1
+PositionFixupIdentity	.res long, 1
+PositionField	.res byte, encoding.POSITION_FIELD_BYTES
+PositionRecipeProgram	.res word, 1
+PositionRecipeArguments	.res long, 1
+PositionRecipeValue	.res long, 1
+PositionRecipeIdentity	.res long, 1
+PositionRecipeRequested	.res long, 1
+GeometryState	.res word, 1
+ScalarProvider	.res long, 1
+ReplayExecution	.res byte, encoding.CONTEXT_BYTES
+ReplayRecords	.res byte, REPLAY_INPUT_BYTES
+ProjectedTarget	.res word, 1
+ProjectedIdentity	.res long, 1
+ScalarTarget	.res word, 1
+ScalarOriginalIdentity	.res long, 1
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.pub
+Selection	.res byte, SelectionPosition.Projection+4
+	.priv
+.endif
+.endif
+.endif
+	.endsection
+
+	.section code, kind=code
+	.pub
+
+; A0=operand token cursor, A1=bounded end, A2=package.Context,
+; D0.W=base mnemonic id, D1.B=0 or qualifier-index+1.
+; Returns D0=0 on success, D1=byte count, A1=output. A0 may change;
+; D2-D7/A2-A6 are preserved. No source spelling is consulted.
+encode	.block
+	.SELECTION_POSITION_CLEAR Selection
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_SELECTION
+	movem.l d2-d7/a2-a6, -(sp)
+	clr.w FixupCount
+	clr.w PositionDependent
+	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
+	move.l #REQUEST_AUTO, PositionRecipeRequested
+	clr.w GeometryState
+	move.w d0, d6
+	moveq #0, d7
+	move.b d1, d7
+	bsr.w splitOperands
+	tst.l d0
+	bne.w fail
+	clr.w MemberMask
+	moveq #0, d4
+memberOperand
+	cmp.w OperandCount, d4
+	bhs.w shapesReady
+	move.w d4, d0
+	lsl.w #2, d0
+	lea OperandStart, a0
+	movea.l 0(a0, d0.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d0.w), a1
+	jsr shapes.isMember
+	lsl.w d4, d0
+	or.w d0, MemberMask
+	addq.w #1, d4
+	bra.w memberOperand
+shapesReady
+	movea.l package.Context.Package(a2), a5
+	move.l a5, d0
+	beq.w fail
+	move.l package.Header.Bytes(a5), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w fail
+	move.l package.Header.Rows(a5), d2
+	move.l package.Header.RowCount(a5), d3
+	cmpi.l #$ffff, d3
+	bhi.w fail
+	move.l d3, d0
+	mulu.w #ROW_BYTES, d0
+	add.l d2, d0
+	bcs.w fail
+	cmp.l package.Header.Bytes(a5), d0
+	bhi.w fail
+	adda.l d2, a5
+rowLoop
+	tst.l d3
+	beq.w fail
+	cmp.w package.Row.Name(a5), d6
+	bne.w nextRow
+	cmp.b package.Row.Qualifier(a5), d7
+	bne.w nextRow
+	moveq #0, d0
+	move.b package.Row.Shape(a5), d0
+	cmp.w OperandShape, d0
+	bne.w nextRow
+	; Guards wrap the nested plan: skip refused candidates before inspecting
+	; their predicates or unsupported recipes. A later candidate may succeed.
+	moveq #0, d0
+	move.w package.Row.StateGuard(a5), d0
+	beq.w guardReady
+	movem.l a2, -(sp)
+	movea.l package.Context.Package(a2), a2
+	jsr state.check
+	movem.l (sp)+, a2
+	cmpi.l #state.GUARD_INVALID, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+guardReady
+	moveq #0, d0
+	move.b package.Row.MemberExcluded(a5), d0
+	and.w MemberMask, d0
+	bne.w nextRow  ; a necessary package match predicate is conclusively false
+	bsr.w excludedName
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+	bsr.w requiredForms
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+	bsr.w tupleClasses
+	cmpi.l #2, d0
+	beq.w fail
+	tst.l d0
+	bne.w nextRow
+	.SELECTION_POSITION_CANDIDATE Selection, package.Row.Priority(a5), package.Row.Recipe(a5)
+	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a5)
+	beq.w fail
+	movem.l d3/d6-d7/a2/a5, -(sp)
+	clr.w FixupCount
+	clr.w PositionDependent
+	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
+	bsr.w tryRow
+	movem.l (sp)+, d3/d6-d7/a2/a5
+	tst.l d0
+	bne.w nextRow
+	bra.w success
+nextRow
+	adda.w #ROW_BYTES, a5
+	subq.l #1, d3
+	bra.w rowLoop
+success
+	movem.l (sp)+, d2-d7/a2-a6
+	.TELEMETRY_SERVICE_LEAVE
+	tst.l d0
+	rts
+fail
+	clr.w PositionDependent
+	clr.w PositionProofCount
+	clr.l PositionFixupCount
+	move.l #references.NO_BASE, PositionFixupIdentity
+	clr.w FixupCount
+	move.w #MISSING_PROGRAM, PositionRecipeProgram
+	move.l #references.NO_BASE, PositionRecipeIdentity
+	moveq #1, d0
+	moveq #0, d1
+	suba.l a1, a1
+	movem.l (sp)+, d2-d7/a2-a6
+	.TELEMETRY_SERVICE_LEAVE
+	tst.l d0
+	rts
+	.bend  ; encode
+
+; Numeric side channel from the most recent successful encode. Hunk projection
+; binds opaque targets to canonical sections; package execution only transports IDs.
+outputFixupCount	.block
+	moveq #0, d0
+	move.w FixupCount, d0
+	rts
+	.bend  ; outputFixupCount
+
+; Return the successful package VM's positional cancellation proof.
+; D0.W=count (saturated at two), D1.W=one-based Hunk section ID (flat: symbol ID). Other registers
+; preserved; CCR reflects D0.
+outputPositionProof	.block
+	moveq #0, d0
+	move.w PositionProofCount, d0
+	moveq #0, d1
+	move.w PositionProofTarget, d1
+	tst.l d0
+	rts
+	.bend  ; outputPositionProof
+
+; Selected fixed relative field, without a replayable whole-instruction recipe.
+; D0/CCR=status,D1=one-based section,D2=exact source symbol. Others kept.
+; This proves only an invariant scalar under equal source/target movement;
+; the module owner must still prove that both anchors share one fragment.
+outputPositionCancellation	.block
+	tst.w GeometryState
+	bne.w bad
+	cmpi.l #encoding.POSITION_FIXUP_SINGLE, PositionFixupCount
+	bne.w bad
+	cmpi.w #1, PositionProofCount
+	bne.w bad
+	tst.w FixupCount
+	bne.w bad
+	cmpi.l #65535, PositionFixupIdentity
+	bhi.w bad
+	moveq #0, d1
+	move.w PositionProofTarget, d1
+	move.l PositionFixupIdentity, d2
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionCancellation
+
+; A0=caller-owned encoding.POSITION_FIELD_BYTES output. D0/CCR=status,
+; D1=one-based target section,D2=exact source identity. Other registers kept.
+; Replay is narrower than cancellation: require signed, untransformed sole
+; field evidence and a placement-independent candidate history. The layout
+; owner separately checks field extent and all possible movement/range values.
+outputRelativeField	.block
+	cmpa.w #0, a0
+	beq.w bad
+	bsr.w outputPositionCancellation
+	bne.w bad
+	cmpi.l #encoding.FIXUP_RANGE_SIGNED, PositionField+encoding.RelativeField.Range
+	bne.w bad
+	move.l PositionField+encoding.RelativeField.Offset, encoding.RelativeField.Offset(a0)
+	move.l PositionField+encoding.RelativeField.Width, encoding.RelativeField.Width(a0)
+	move.l PositionField+encoding.RelativeField.LittleEndian, encoding.RelativeField.LittleEndian(a0)
+	move.l PositionField+encoding.RelativeField.Adjustment, encoding.RelativeField.Adjustment(a0)
+	move.l PositionField+encoding.RelativeField.Value, encoding.RelativeField.Value(a0)
+	move.l PositionField+encoding.RelativeField.Range, encoding.RelativeField.Range(a0)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputRelativeField
+
+; D0/CCR=nonzero if successful output observes instruction PC.
+; All other registers preserved; distinct from Hunk cancellation eligibility.
+outputPositionDependent	.block
+	moveq #0, d0
+	move.w PositionDependent, d0
+	rts
+	.bend  ; outputPositionDependent
+
+; Return the successful ordinary branch recipe for module placement replay.
+; D0/CCR=status,D1=program,D2=candidate | opcode<<8,D3=target,D4=section,
+; D5=original affine identity. Preserves D6-D7/A0-A6. Unsupported or absent proofs return nonzero.
+outputPositionRecipe	.block
+	cmpi.w #MISSING_PROGRAM, PositionRecipeProgram
+	beq.w bad
+	cmpi.w #1, PositionProofCount
+	bne.w bad
+	tst.w FixupCount
+	bne.w bad
+	moveq #0, d1
+	move.w PositionRecipeProgram, d1
+	move.l PositionRecipeArguments, d2
+	move.l PositionRecipeValue, d3
+	moveq #0, d4
+	move.w PositionProofTarget, d4
+	move.l PositionRecipeIdentity, d5
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionRecipe
+
+; Return the successful ordinary branch's original package width request.
+; D0/CCR=status,D1=REQUEST_AUTO or explicit candidate ID. Others preserved.
+; The selected candidate alone does not prove that source width was explicit.
+outputPositionRequestedCandidate	.block
+	cmpi.w #MISSING_PROGRAM, PositionRecipeProgram
+	beq.w bad
+	move.l PositionRecipeRequested, d1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; outputPositionRequestedCandidate
+
+; A0=optional scalar provider; D0/CCR=0, other registers preserved.
+; The assembly owner must clear this borrowed callback before retiring state.
+; Provider(A0/A1=bounded expression,A2=Context) returns SCALAR_* classification,
+; A0=cursor,D1=value,D2=unknown when handled; D3-D7/A1-A6 preserved. Unhandled
+; must leave A0 unchanged. It may permit only a deferred, exact layout proof.
+configureScalarCapture	.block
+	move.l a0, ScalarProvider
+	moveq #0, d0
+	rts
+	.bend  ; configureScalarCapture
+
+; A0=package,D1=branch program,D2=retained recipe arguments,
+; D3/D4=signed target-minus-PC bounds. D0/CCR=0 proves AUTO width invariance;
+; other registers preserved. The branch owner interprets its candidate table.
+positionInterval	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a4
+	cmpi.l #HEADER_BYTES, package.Header.Bytes(a4)
+	blo.w bad
+	cmp.l package.Header.ProgramCount(a4), d1
+	bhs.w bad
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	move.l d2, d5
+	andi.l #$ffff0000, d5
+	bne.w bad
+	andi.l #$ff, d2
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a4), d1
+	bcs.w bad
+	move.l d1, d0
+	addi.l #PROGRAM_BYTES, d0
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	lea 0(a4, d1.l), a3
+	cmpi.w #PROGRAM_SEMANTIC, package.Program.Kind(a3)
+	bne.w bad
+	move.l package.Program.Offset(a3), d0
+	move.l package.Program.Bytes(a3), d1
+	move.l d0, d5
+	add.l d1, d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d0, a1
+	jsr encoding.validateBranchInterval
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; positionInterval
+
+; Numeric admission proof for the latest encode attempt. D0/CCR=0 means no
+; non-fixup scalar projection observed a section/PC value and no fixup attempt
+; failed while considering candidates; nonzero is unproven. Others preserved.
+; Failed candidates contribute because movement can make their ranges match.
+; Consumers query only after successful encoding. Ordinary policy skips proof.
+outputGeometryProof	.block
+	tst.w GeometryState
+	bne.w unproven
+	moveq #0, d0
+	rts
+unproven
+	moveq #1, d0
+	rts
+	.bend  ; outputGeometryProof
+
+; Replay the same package program with a forced candidate after placement.
+; A0=package,A1=output,D0=capacity,D1=program,D2=arguments,D3=PC,D4=target.
+; D0/CCR=status,D1=bytes; preserves D2-D7/A0-A6. Scratch is non-reentrant.
+patchPosition	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	lea ReplayExecution, a6
+	move.l a1, encoding.Context.Output(a6)
+	move.l d0, encoding.Context.Capacity(a6)
+	cmpi.l #$ffff, d0
+	bhi.w bad
+	move.l d3, encoding.Context.Pc(a6)
+	clr.w encoding.Context.WriteOffset(a6)
+	clr.w encoding.Context.PositionDependent(a6)
+	clr.w encoding.Context.PositionProofCount(a6)
+	clr.l encoding.Context.PositionFixupCount(a6)
+	move.l #references.NO_BASE, encoding.Context.PositionFixupIdentity(a6)
+	clr.w encoding.Context.FixupCount(a6)
+	clr.l encoding.Context.InputIdentities(a6)
+	clr.l encoding.Context.FixupIdentities(a6)
+	move.w #$ffff, encoding.Context.InputTarget(a6)
+	move.w #2, encoding.Context.Pass(a6)
+	clr.w encoding.Context.Unstable(a6)
+	clr.w encoding.Context.HasSymbol(a6)
+	clr.b encoding.Context.Defer(a6)
+	clr.w encoding.Context.MnemonicLength(a6)
+	move.l #ReplayRecords, encoding.Context.Input(a6)
+	move.w #4, encoding.Context.InputCount(a6)
+	move.w #encoding.SCALAR_VALUE_BYTES, encoding.Context.FirstInputLen(a6)
+	move.l d2, d5
+	andi.l #$ffff0000, d5
+	bne.w bad
+	lea ReplayRecords, a3
+	moveq #0, d5
+	move.w d2, d5
+	lsr.w #8, d5
+	clr.l ReplayInput.Opcode+encoding.ScalarInput.Value(a3)
+	move.b d5, ReplayInput.Opcode+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Opcode+encoding.ScalarInput.Bytes(a3)
+	move.l d4, d5
+	ror.w #8, d5
+	swap d5
+	ror.w #8, d5
+	move.l d5, ReplayInput.Target+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Target+encoding.ScalarInput.Bytes(a3)
+	clr.l ReplayInput.Candidate+encoding.ScalarInput.Value(a3)
+	move.b d2, ReplayInput.Candidate+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Candidate+encoding.ScalarInput.Bytes(a3)
+	clr.l ReplayInput.Class+encoding.ScalarInput.Value(a3)
+	move.b #encoding.SCALAR_VALUE_BYTES, ReplayInput.Class+encoding.ScalarInput.Bytes(a3)
+	movea.l a0, a4
+	cmpi.l #HEADER_BYTES, package.Header.Bytes(a4)
+	blo.w bad
+	cmp.l package.Header.ProgramCount(a4), d1
+	bhs.w bad
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a4), d1
+	bcs.w bad
+	move.l d1, d0
+	addi.l #PROGRAM_BYTES, d0
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	lea 0(a4, d1.l), a3
+	cmpi.w #PROGRAM_SEMANTIC, package.Program.Kind(a3)
+	bne.w bad
+	move.l package.Program.Offset(a3), d0
+	move.l package.Program.Bytes(a3), d1
+	cmpi.l #$ffff, d1
+	bhi.w bad
+	move.l d0, d5
+	add.l d1, d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d0, a1
+	jsr encoding.branchProgram
+	tst.l d0
+	bne.w bad
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; patchPosition
+
+; D0.W=index. Returns D0=status,D1=byte offset,D2=width,D3=target
+; one-based Hunk section ID (flat: symbol ID),D4=encoded addend.
+; Preserves D5-D7/A0-A6.
+outputFixup	.block
+	movem.l d5/a0, -(sp)
+	moveq #0, d5
+	move.w d0, d5
+	cmp.w FixupCount, d5
+	bhs.w badFixup
+	move.l d5, d0
+	lsl.l #2, d0
+	lea FixupOffsets, a0
+	move.l 0(a0, d0.l), d1
+	lea FixupAddends, a0
+	move.l 0(a0, d0.l), d4
+	move.l d5, d0
+	add.w d0, d0
+	lea FixupWidths, a0
+	moveq #0, d2
+	move.w 0(a0, d0.w), d2
+	lea FixupTargets, a0
+	moveq #0, d3
+	move.w 0(a0, d0.w), d3
+	moveq #0, d0
+	bra.w fixupReturn
+badFixup
+	moveq #1, d0
+fixupReturn
+	movem.l (sp)+, d5/a0
+	tst.l d0
+	rts
+	.bend  ; outputFixup
+
+; Return the original affine identity for one package-emitted fixup.
+; D0.W=index. D0/CCR=status,D3=symbol ID or CURRENT_PC_BASE on success.
+; Other registers preserved. Section-only provenance has no source identity
+; and returns failure; ordinary Hunk fixup metadata remains available.
+outputFixupIdentity	.block
+	move.l a0, -(sp)
+	andi.l #$ffff, d0
+	cmp.w FixupCount, d0
+	bhs.w bad
+	lsl.l #2, d0
+	lea FixupIdentities, a0
+	move.l 0(a0, d0.l), d3
+	cmpi.l #references.NO_BASE, d3
+	beq.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; outputFixupIdentity
+
+; Replace a proven absolute-long fixup field after placement normalization.
+; D0=index,D1=section-relative addend,A2=Context. D0/CCR=status; others preserved.
+; The field offset/width and byte order come from package execution and metadata.
+patchOutputFixup	.block
+	movem.l d1-d5/a0-a1, -(sp)
+	move.l d1, d5
+	move.l d0, -(sp)
+	bsr.w outputFixup
+	tst.l d0
+	bne.w bad
+	cmpi.l #4, d2
+	bne.w bad
+	cmpi.l #4092, d1
+	bhi.w bad
+	lea Output, a0
+	adda.l d1, a0
+	movea.l package.Context.Package(a2), a1
+	tst.w package.Header.LittleEndian(a1)
+	beq.w bigEndian
+	ror.w #8, d5
+	swap d5
+	ror.w #8, d5
+	move.l d5, (a0)
+	bra.w patched
+bigEndian
+	move.l d5, (a0)
+patched
+	move.l (sp), d0
+	lsl.l #2, d0
+	lea FixupAddends, a0
+	move.l 4(sp), 0(a0, d0.l)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	addq.l #4, sp
+	movem.l (sp)+, d1-d5/a0-a1
+	tst.l d0
+	rts
+	.bend  ; patchOutputFixup
+
+	.priv
+
+; Record bounded top-level operands before deriving their numeric shape.
+; Nested separators remain inside their operand; empty/fourth operands reject.
+splitOperands	.block
+	move.l a0, OperandStart
+	move.l a1, OperandEnd
+	clr.w OperandCount
+	clr.w OperandShape
+	cmpa.l a1, a0
+	beq.w emptyOperands
+	moveq #0, d2
+	moveq #0, d3  ; current slot
+	movea.l a0, a4  ; current bounded operand start
+	movea.l a0, a3
+scan
+	cmpa.l a1, a3
+	bhs.w scanned
+	moveq #0, d0
+	move.b (a3), d0
+	cmpi.b #TOKEN_OPEN_BRACKET, d0
+	beq.w opening
+	cmpi.b #TOKEN_OPEN_PAREN, d0
+	bne.w close
+opening
+	addq.w #1, d2
+	bra.w step
+close
+	cmpi.b #TOKEN_CLOSE_BRACKET, d0
+	beq.w closing
+	cmpi.b #TOKEN_CLOSE_PAREN, d0
+	bne.w comma
+closing
+	tst.w d2
+	beq.w malformed
+	subq.w #1, d2
+	bra.w step
+comma
+	cmpi.b #TOKEN_COMMA, d0
+	bne.w step
+	tst.w d2
+	bne.w step
+	cmpa.l a4, a3
+	beq.w malformed
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandEnd, a6
+	move.l a3, 0(a6, d0.w)
+	addq.w #1, d3
+	cmpi.w #MAX_OPERANDS, d3
+	bhs.w malformed
+	addq.l #1, a3
+	cmpa.l a1, a3
+	bhs.w malformed
+	movea.l a3, a4
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandStart, a6
+	move.l a3, 0(a6, d0.w)
+	bra.w scan
+scanned
+	tst.w d2
+	bne.w malformed
+	move.w d3, d0
+	lsl.w #2, d0
+	lea OperandEnd, a6
+	move.l a1, 0(a6, d0.w)
+	addq.w #1, d3
+	move.w d3, OperandCount
+	cmpi.w #1, d3
+	beq.w one
+	cmpi.w #MAX_OPERANDS, d3
+	beq.w triple
+	cmpi.b #TOKEN_HASH, (a0)
+	beq.w prefixedPair
+	movea.l OperandStart+4, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	beq.w registerPrefixedPair
+	move.w #SHAPE_PAIR, OperandShape
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w secondValue
+	move.w #SHAPE_VALUE_REGISTER, OperandShape
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w pairReady
+	move.w #SHAPE_REGISTER_PAIR, OperandShape
+	bra.w pairReady
+registerPrefixedPair
+	move.w #SHAPE_VALUE_PAIR, OperandShape
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w pairReady
+	move.w #SHAPE_REGISTER_PREFIX_PAIR, OperandShape
+	bra.w pairReady
+secondValue
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	beq.w pairReady
+	move.w #SHAPE_VALUE_PAIR, OperandShape
+pairReady
+	moveq #0, d0
+	rts
+step
+	bsr.w skipToken
+	tst.l d0
+	bne.w malformed
+	bra.w scan
+triple
+	move.w #SHAPE_VALUE_TRIPLE, OperandShape
+	movea.l OperandStart+8, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w triplePrefix
+	move.w #SHAPE_VALUE_PREFIX_TRIPLE, OperandShape
+triplePrefix
+	movea.l OperandStart, a0
+	movea.l OperandEnd, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	movea.l OperandStart+8, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w tripleDestination
+	move.w #SHAPE_REGISTER_PREFIX_TRIPLE, OperandShape
+	bra.w tripleReady
+tripleDestination
+	move.w #SHAPE_REGISTER_VALUE_TRIPLE, OperandShape
+	movea.l OperandEnd+8, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w tripleReady
+	move.w #SHAPE_REGISTER_TRIPLE, OperandShape
+tripleReady
+	moveq #0, d0
+	rts
+one
+	move.w #1, OperandCount
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w singleOperand
+	move.w #SHAPE_PREFIXED, OperandShape
+	moveq #0, d0
+	rts
+singleOperand
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	bne.w valueOperand
+	move.w #SHAPE_REGISTER, OperandShape
+	moveq #0, d0
+	rts
+valueOperand
+	move.w #SHAPE_SINGLE, OperandShape
+	moveq #0, d0
+	rts
+prefixedPair
+	movea.l OperandStart+4, a0
+	movea.l OperandEnd+4, a1
+	bsr.w knownRegister
+	cmpi.l #2, d0
+	beq.w malformed
+	tst.l d0
+	beq.w prefixedRegister
+	move.w #SHAPE_PREFIXED_VALUE, OperandShape
+	moveq #0, d0
+	rts
+prefixedRegister
+	move.w #SHAPE_PREFIXED_PAIR, OperandShape
+	moveq #0, d0
+	rts
+emptyOperands
+	moveq #0, d0
+	rts
+malformed
+	moveq #1, d0
+	rts
+	.bend  ; splitOperands
+
+; D0=0 for an active package register, 1 for another operand, 2 for bad metadata.
+; Preserves all other registers; CCR reflects D0.
+knownRegister	.block
+	movem.l d1-d4/a0-a1/a6, -(sp)
+	bsr.w exactName
+	tst.l d0
+	bne.w done
+	bsr.w findRegisterClass
+done
+	movem.l (sp)+, d1-d4/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; knownRegister
+
+; D1.W=name ID. Returns D0=0 and D2.W=class for the first register row,
+; 1 for an unknown name, or 2 for malformed table metadata. Clobbers D4/A6.
+findRegisterClass	.block
+	movea.l package.Context.Package(a2), a6
+	move.l package.Header.RegisterRows(a6), d0
+	move.l package.Header.RegisterCount(a6), d4
+	cmpi.l #$ffff, d4
+	bhi.w malformed
+	move.l d4, d2
+	mulu.w #6, d2
+	add.l d0, d2
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w malformed
+	adda.l d0, a6
+loop
+	tst.l d4
+	beq.w no
+	cmp.w (a6), d1
+	beq.w yes
+	addq.l #6, a6
+	subq.l #1, d4
+	bra.w loop
+yes
+	moveq #0, d2
+	move.w 2(a6), d2
+	moveq #0, d0
+	rts
+no
+	moveq #1, d0
+	rts
+malformed
+	moveq #2, d0
+	rts
+	.bend  ; findRegisterClass
+
+; D0=1 only when an exact package name disproves this row's match predicate;
+; 0 is unknown/no exclusion, 2 is malformed metadata. Other registers preserved.
+excludedName	.block
+	movem.l d1-d4/a0-a1/a3-a4/a6, -(sp)
+	move.l package.Row.Exclusions(a5), d0
+	beq.w no
+	movea.l package.Context.Package(a2), a6
+	move.l d0, d2
+	addq.l #2, d2
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w malformed
+	movea.l a6, a3
+	adda.l d0, a3
+	moveq #0, d3
+	move.w (a3)+, d3
+	move.l d3, d4
+	lsl.l #2, d4
+	add.l d2, d4
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w malformed
+	moveq #0, d4
+loop
+	tst.l d3
+	beq.w complete
+	moveq #0, d0
+	move.w (a3)+, d0
+	cmpi.w #MAX_OPERANDS, d0
+	bhs.w malformed
+	move.w (a3)+, d2
+	cmp.w package.Header.NameCount(a6), d2
+	bhs.w malformed
+	cmp.w OperandCount, d0
+	bhs.w next
+	lsl.w #2, d0
+	lea OperandStart, a4
+	movea.l 0(a4, d0.w), a0
+	lea OperandEnd, a4
+	movea.l 0(a4, d0.w), a1
+	bsr.w exactName
+	tst.l d0
+	bne.w next
+	cmp.w d1, d2
+	bne.w next
+	moveq #1, d4
+next
+	subq.l #1, d3
+	bra.w loop
+complete
+	move.l d4, d0
+	bra.w done
+no
+	moveq #0, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a3-a4/a6
+	tst.l d0
+	rts
+	.bend  ; excludedName
+
+; Prove that an unsupported sequence cannot match its required packed wrapper.
+; Zero permits normal handling, one skips the row, two rejects bad metadata.
+requiredForms	.block
+	movem.l d1-d4/a0-a1/a6, -(sp)
+	moveq #0, d2
+	move.b package.Row.RequiredForm2(a5), d2
+	lsl.w #8, d2
+	move.b package.Row.RequiredForms(a5), d2
+	moveq #0, d3
+next
+	move.l d2, d4
+	andi.l #15, d4
+	cmpi.l #11, d4
+	bhi.w malformed
+	tst.l d4
+	beq.w advance
+	cmp.w OperandCount, d3
+	bhs.w mismatch
+	move.l d3, d1
+	lsl.l #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.l), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.l), a1
+	cmpi.l #10, d4
+	bhs.w exactTuple
+	cmpi.l #5, d4
+	bhs.w wrappedFirstItem
+	cmpi.l #4, d4
+	beq.w tuple
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #1, d4
+	beq.w plain
+	cmpi.l #7, d0
+	bne.w mismatch
+	cmpi.l #2, d4
+	beq.w tailUpdate
+	cmpi.b #TOKEN_MINUS, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_OPEN_PAREN, 1(a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+tailUpdate
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -2(a1)
+	bne.w mismatch
+	cmpi.b #TOKEN_PLUS, -1(a1)
+	bne.w mismatch
+	bra.w advance
+plain
+	cmpi.l #6, d0
+	bne.w mismatch
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)
+	bne.w mismatch
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w mismatch
+	bra.w advance
+exactTuple
+	; Forms 10/11 retain an exact canonical tuple arity 2/3. Only complete
+	; tuple bounds disprove that necessary match fact. Complete non-tuple
+	; roots reuse the common structural proof; unknown shapes stay closed.
+	bsr.w tupleArity
+	beq.w tuple
+	addq.l #8, d0
+	cmp.l d4, d0
+	bne.w mismatch
+	bra.w advance
+wrappedFirstItem
+	; A named register/range cannot match a compiled scalar expression.
+	; Preserve the unsupported barrier for names and other unknown forms.
+	cmpi.l #7, d4
+	bne.w otherStructuredRoot
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
+	; A complete indirect/update wrapper is not a bare named root either.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+	; A complete tuple cannot satisfy a bare register/named-range root.
+	bsr.w tupleArity
+	tst.l d0
+	bne.w mismatch
+	bra.w advance
+otherStructuredRoot
+	; A complete scalar has no member or indirect path root. Form 6
+	; requires the scalar itself and must retain its matching barrier.
+	cmpi.l #6, d4
+	beq.w scalarRoot
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
+	cmpi.l #5, d4
+	bne.w notMemberForm
+	; A complete raw name/range list cannot satisfy a member root.
+	jsr shapes.isNameSequence
+	tst.l d0
+	bne.w mismatch
+	; A complete indirect/update wrapper also has no member tail.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+notMemberForm
+
+	cmpi.l #8, d4
+	blo.w scalarRoot
+	; Path forms 8/9 require a nested first tuple item. A complete
+	; wrapper around one name cannot match that required structure.
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+	; A complete member root likewise has no outer indirect tuple. Its
+	; scalar payload remains opaque; only the complete wrapper proves this.
+	jsr shapes.isMember
+	tst.l d0
+	bne.w mismatch
+scalarRoot
+	cmpi.l #9, d4
+	bne.w rootArity
+	movem.l d1/d3/a0-a1, -(sp)
+	moveq #0, d0
+	moveq #0, d1
+	jsr tuples.select
+	bne.w firstReady
+	cmpi.b #products.BINARY_TAG, (a0)
+	beq.w binaryFirst
+firstReady
+	movem.l (sp)+, d1/d3/a0-a1
+	bra.w rootArity
+binaryFirst
+	movem.l (sp)+, d1/d3/a0-a1
+	bra.w advance
+rootArity
+	bsr.w tupleArity
+	tst.l d0
+	bne.w mismatch
+	bra.w advance
+tuple
+	; Only complete non-tuple roots disprove an arbitrary tuple projection.
+	; Register-first pairs are not displacement-prefix tuples.
+	jsr shapes.isScalar
+	tst.l d0
+	bne.w mismatch
+	jsr shapes.isWrappedName
+	tst.l d0
+	bne.w mismatch
+	jsr shapes.isMember
+	tst.l d0
+	bne.w mismatch
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w advance
+	cmpi.b #TOKEN_SYMBOL_1, (a0)
+	bls.w mismatch
+advance
+	lsr.l #4, d2
+	addq.l #1, d3
+	cmpi.l #MAX_OPERANDS, d3
+	blo.w next
+	moveq #0, d0
+	bra.w done
+mismatch
+	moveq #1, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a6
+	tst.l d0
+	rts
+	.bend  ; requiredForms
+
+; Disprove a row only when a complete packed tuple contains a known register
+; with a different class. D0=0 unknown/matches, 1 mismatch, 2 bad metadata.
+; All other caller state is preserved; CCR reflects D0.
+tupleClasses	.block
+	move.w package.Row.TupleClasses(a5), d0
+	or.b package.Row.TupleClass2(a5), d0
+	tst.w d0
+	beq.w no
+	movem.l d1-d4/a0-a1/a4, -(sp)
+	lea package.Row.TupleClasses(a5), a4
+	moveq #0, d3
+next
+	moveq #0, d4
+	cmpi.w #2, d3
+	beq.w thirdClass
+	move.b 0(a4, d3.w), d4
+	bra.w classReady
+thirdClass
+	move.b package.Row.TupleClass2(a5), d4
+classReady
+	tst.b d4
+	beq.w advance
+	cmp.w OperandCount, d3
+	bhs.w malformed
+	move.w d3, d1
+	lsl.w #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.w), a1
+	bsr.w tupleOperandClass
+	tst.l d0
+	bne.w done
+advance
+	addq.w #1, d3
+	cmpi.w #MAX_OPERANDS, d3
+	blo.w next
+	moveq #0, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1/a4
+	tst.l d0
+	rts
+no
+	moveq #0, d0
+	rts
+	.bend  ; tupleClasses
+
+; A0/A1 bound one operand; D4.B is required class + 1. Only the exact
+; compiled-scalar/one-or-two-name wrapper can prove a base-register mismatch.
+; D0=0 unknown/matches, 1 mismatch, 2 bad register metadata; others preserved.
+tupleOperandClass	.block
+	movem.l d1-d5/a0-a1/a3/a6, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #9, d0
+	blo.w unknown
+	jsr expression.capsuleSpan
+	tst.l d0
+	bne.w unknown
+	move.l a1, d0
+	sub.l a0, d0
+	sub.l d1, d0
+	cmpi.l #6, d0
+	beq.w oneName
+	cmpi.l #11, d0
+	bne.w unknown
+	cmpi.b #TOKEN_COMMA, 5(a0, d1.l)
+	bne.w unknown
+	cmpi.b #TOKEN_CLOSE_PAREN, 10(a0, d1.l)
+	bne.w unknown
+	bra.w baseName
+oneName
+	cmpi.b #TOKEN_CLOSE_PAREN, 5(a0, d1.l)
+	bne.w unknown
+baseName
+	lea 0(a0, d1.l), a3
+	cmpi.b #TOKEN_OPEN_PAREN, (a3)
+	bne.w unknown
+	lea 1(a3), a0
+	lea 5(a3), a1
+	bsr.w exactName
+	tst.l d0
+	bne.w unknown
+	move.w d1, d5
+	cmpi.b #TOKEN_COMMA, 5(a3)
+	bne.w lookup
+	; The second complete name token may carry a package qualifier. Its
+	; meaning is irrelevant to the necessary class of the first name.
+	cmpi.b #TOKEN_SYMBOL_0, 6(a3)
+	beq.w lookup
+	cmpi.b #TOKEN_SYMBOL_1, 6(a3)
+	bne.w unknown
+lookup
+	move.w d5, d1
+	move.w d4, d3
+	bsr.w findRegisterClass
+	cmpi.l #2, d0
+	beq.w result
+	tst.l d0
+	bne.w unknown
+	subq.w #1, d3
+	cmp.w d2, d3
+	beq.w unknown
+	moveq #1, d0
+	bra.w result
+unknown
+	moveq #0, d0
+result
+	movem.l (sp)+, d1-d5/a0-a1/a3/a6
+	tst.l d0
+	rts
+	.bend  ; tupleOperandClass
+
+; Advance A3 over one bounded binary token.
+skipToken	.block
+	move.l a0, -(sp)
+	movea.l a3, a0
+	jsr expression.capsuleSpan
+	movea.l (sp)+, a0
+	tst.l d0
+	bne.w ordinary
+	adda.l d1, a3
+	rts
+ordinary
+	cmpi.l #expression.STATUS_NOT_CAPSULE, d0
+	bne.w bad
+	cmpa.l a1, a3
+	bhs.w bad
+	moveq #0, d0
+	move.b (a3)+, d0
+	cmpi.b #products.BINARY_TAG, d0
+	beq.w compiled
+	cmpi.b #3, d0
+	beq.w string
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
+	cmpi.b #2, d0
+	bhi.w ok
+	moveq #3, d1
+	cmpi.b #2, d0
+	blo.w sized
+	moveq #4, d1
+	bra.w sized
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES-1, d1
+	bra.w sized
+compiled
+	cmpa.l a1, a3
+	bhs.w bad
+	moveq #0, d1
+	move.b (a3)+, d1
+	tst.l d1
+	beq.w bad
+	bra.w sized
+string
+	cmpa.l a1, a3
+	bhs.w bad
+	moveq #0, d1
+	move.b (a3)+, d1
+sized
+	move.l a1, d0
+	sub.l a3, d0
+	cmp.l d1, d0
+	blo.w bad
+	adda.l d1, a3
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; skipToken
+
+tryRow	.block
+	clr.w Unresolved
+	move.w #$ffff, ScalarTarget
+	move.l #references.NO_BASE, ScalarOriginalIdentity
+	moveq #0, d0
+	move.b package.Row.Recipe(a5), d0
+	cmpi.b #RECIPE_NONE, d0
+	beq.w tableNone
+	cmpi.b #RECIPE_U8, d0
+	beq.w tableU8
+	cmpi.b #RECIPE_U16, d0
+	beq.w tableU16
+	cmpi.b #RECIPE_REL8, d0
+	beq.w tableRel8
+	cmpi.b #RECIPE_SEMANTIC_INPUTS, d0
+	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, d0
+	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_TABLE, d0
+	beq.w semantic
+	cmpi.b #RECIPE_SEMANTIC_SEQUENCE, d0
+	beq.w sequence
+	bra.w bad
+tableU8
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	tst.l d1
+	bmi.w bad
+	cmpi.l #255, d1
+	bhi.w bad
+	move.b d1, Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+tableU16
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	tst.l d1
+	bmi.w bad
+	cmpi.l #65535, d1
+	bhi.w bad
+	bsr.w storeWord
+	moveq #1, d5
+	moveq #2, d6
+	bra.w table
+tableRel8
+	bsr.w evaluateOperandZero
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w unresolvedFixed
+	sub.l package.Context.Pc(a2), d1
+	subq.l #2, d1
+	cmpi.l #-128, d1
+	blt.w bad
+	cmpi.l #127, d1
+	bgt.w bad
+	move.w #1, PositionDependent
+	move.b d1, Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+unresolvedFixed
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+	clr.l d1
+	cmpi.b #RECIPE_U16, package.Row.Recipe(a5)
+	beq.w unresolvedWord
+	clr.b Records
+	moveq #1, d5
+	moveq #1, d6
+	bra.w table
+unresolvedWord
+	clr.w Records
+	moveq #1, d5
+	moveq #2, d6
+	bra.w table
+tableNone
+	moveq #0, d5
+	moveq #0, d6
+table
+	bsr.w program
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w bad
+	lea Records, a3
+	bsr.w prepareExecution
+	jsr encoding.table
+	rts
+; Conservative metadata scan; no register spellings or target widths.
+hasWiderRow	.block
+	movem.l d1-d4/a0-a1, -(sp)
+	movea.l package.Context.Package(a2), a0
+	move.l package.Header.RowCount(a0), d1
+	movea.l a0, a1
+	adda.l package.Header.Rows(a0), a1
+next
+	tst.l d1
+	beq.w no
+	move.w package.Row.Name(a5), d2
+	cmp.w package.Row.Name(a1), d2
+	bne.w advance
+	move.b package.Row.Qualifier(a5), d2
+	cmp.b package.Row.Qualifier(a1), d2
+	bne.w advance
+	move.b package.Row.Shape(a5), d2
+	cmp.b package.Row.Shape(a1), d2
+	bne.w advance
+	move.b package.Row.Owner(a5), d2
+	cmp.b package.Row.Owner(a1), d2
+	bne.w advance
+	move.b package.Row.WidthRank(a5), d2
+	cmp.b package.Row.WidthRank(a1), d2
+	bhs.w advance
+	cmpi.b #RECIPE_UNSUPPORTED, package.Row.Recipe(a1)
+	beq.w advance
+	moveq #1, d0
+	bra.w done
+advance
+	adda.w #ROW_BYTES, a1
+	subq.l #1, d1
+	bra.w next
+no
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d4/a0-a1
+	rts
+	.bend
+
+semantic
+	bsr.w project
+	tst.l d0
+	bne.w bad
+	; Deferred scalar inputs use a fixed-width placeholder. An unstable
+	; narrow row must yield to a supported wider row from the same owner.
+	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
+	bne.w resolvedInputs
+	tst.w Unresolved
+	beq.w resolvedInputs
+	tst.b package.Row.Unstable(a5)
+	beq.w resolvedInputs
+	bsr.w hasWiderRow
+	tst.l d0
+	bne.w bad
+resolvedInputs
+	bsr.w program
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w bad
+	bsr.w prepareExecution
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	move.b package.Row.Unstable(a5), encoding.Context.Unstable(a6)
+	clr.w encoding.Context.Defer(a6)
+	tst.w Unresolved
+	beq.w branchStateReady
+	move.b #1, encoding.Context.Defer(a6)
+	move.b #1, encoding.Context.HasSymbol(a6)
+branchStateReady
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #4, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
+	tst.l d0
+	bne.w bad
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
+	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
+	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
+	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
+	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
+	move.l encoding.Context.PositionField+encoding.RelativeField.Offset(a6), PositionField+encoding.RelativeField.Offset
+	move.l encoding.Context.PositionField+encoding.RelativeField.Width(a6), PositionField+encoding.RelativeField.Width
+	move.l encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6), PositionField+encoding.RelativeField.LittleEndian
+	move.l encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6), PositionField+encoding.RelativeField.Adjustment
+	move.l encoding.Context.PositionField+encoding.RelativeField.Value(a6), PositionField+encoding.RelativeField.Value
+	move.l encoding.Context.PositionField+encoding.RelativeField.Range(a6), PositionField+encoding.RelativeField.Range
+	; Only an ordinary branch row can publish a replayable selected recipe.
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
+	bne.w recipeReady
+	cmpi.w #1, PositionProofCount
+	bne.w recipeReady
+	tst.w FixupCount
+	bne.w recipeReady
+	cmpi.l #references.NO_BASE, ScalarOriginalIdentity
+	beq.w recipeReady
+	move.l ScalarOriginalIdentity, PositionRecipeIdentity
+	move.w package.Row.Program(a5), PositionRecipeProgram
+	moveq #0, d0
+	move.w encoding.Context.PositionProofOpcode(a6), d0
+	lsl.l #8, d0
+	move.b encoding.Context.PositionProofCandidate+1(a6), d0
+	move.l d0, PositionRecipeArguments
+	move.l encoding.Context.PositionProofValue(a6), PositionRecipeValue
+	move.l encoding.Context.PositionProofRequested(a6), PositionRecipeRequested
+recipeReady
+	moveq #0, d0
+	cmpi.b #RECIPE_SEMANTIC_TABLE, package.Row.Recipe(a5)
+	bne.w return
+	; Semantic inputs are dead. Reuse their storage so TABL output cannot
+	; overwrite its own source while inserting the package opcode prefix.
+	cmpi.l #24, d1
+	bhi.w bad
+	move.l d1, d6
+	lea Records, a3
+	move.l d1, d0
+copyPayload
+	tst.l d0
+	beq.w payloadReady
+	move.b (a1)+, (a3)+
+	subq.l #1, d0
+	bra.w copyPayload
+payloadReady
+	moveq #0, d0
+	move.w package.Row.TableProgram(a5), d0
+	bsr.w programId
+	tst.l d0
+	bne.w bad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w bad
+	moveq #0, d5
+	tst.l d6
+	beq.w tablePayloadReady
+	moveq #1, d5
+tablePayloadReady
+	lea Records, a3
+	bsr.w prepareExecution
+	jsr encoding.table
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; tryRow
+
+; Execute a bounded package-owned sequence using the ordinary projection and
+; SEMV interfaces. Match stages validate projections; encode stages append bytes.
+sequence	.block
+	movem.l d2-d7/a2-a5, -(sp)
+	suba.w #ROW_BYTES, sp
+	movea.l sp, a0
+	movea.l a5, a1
+	moveq #ROW_BYTES/4-1, d0
+copyRow
+	move.l (a1)+, (a0)+
+	dbf d0, copyRow
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	beq.w bad
+	cmpi.w #8, d7
+	bhi.w bad
+	movea.l package.Context.Package(a2), a4
+	move.l package.Row.Inputs(a5), d0
+	move.l d7, d1
+	mulu.w #12, d1
+	add.l d0, d1
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d1
+	bhi.w bad
+	adda.l d0, a4
+	movea.l sp, a5
+	; The private row copy reuses the guard word for its encoding phase.
+	; Selection checks the untouched package row after this routine returns.
+	clr.w SEQUENCE_PHASE(a5)
+	moveq #0, d6
+	moveq #0, d0
+	move.w package.Row.TableProgram(a5), d0
+	cmpi.w #MISSING_PROGRAM, d0
+	beq.w loop
+	; Package table prefix precedes operand-only semantic stages. Programs
+	; that emit the instruction themselves carry no table prefix descriptor.
+	movem.l d7/a4, -(sp)
+	bsr.w programId
+	tst.l d0
+	bne.w prefixBad
+	cmpi.w #PROGRAM_TABLE, d2
+	bne.w prefixBad
+	; The table owns the opcode and its operand slot. The sequence supplies
+	; that slot later, so bind one empty operand for prefix emission.
+	moveq #1, d5
+	lea Records, a3
+	bsr.w prepareExecution
+	jsr encoding.table
+	tst.l d0
+	bne.w prefixBad
+	move.l d1, d6
+	movem.l (sp)+, d7/a4
+	bra.w loop
+prefixBad
+	movem.l (sp)+, d7/a4
+	bra.w bad
+loop
+	movem.l d6-d7/a4, -(sp)
+	moveq #0, d0
+	move.b package.SequenceStage.Kind(a4), d0
+	cmpi.b #2, d0
+	bhi.w stageBad
+	tst.b package.SequenceStage.Reserved(a4)
+	bne.w stageBad
+	tst.w package.SequenceStage.Reserved2(a4)
+	bne.w stageBad
+	tst.w package.SequenceStage.InputCount(a4)
+	beq.w stageBad
+	move.w package.SequenceStage.Program(a4), package.Row.Program(a5)
+	move.w package.SequenceStage.InputCount(a4), package.Row.InputCount(a5)
+	move.l package.SequenceStage.Inputs(a4), package.Row.Inputs(a5)
+	move.w d0, -(sp)
+	cmpi.w #2, d0
+	beq.w fixupProjection
+	bsr.w project
+	tst.l d0
+	bne.w projectionBad
+	tst.w Unresolved
+	beq.w projected
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w projectionBad
+projected
+	move.w (sp)+, d0
+	tst.w d0
+	beq.w match
+	bra.w encodeStage
+fixupProjection
+	bset #GEOMETRY_FIXUP_BIT, GeometryState+1
+	bsr.w projectFixup
+	bclr #GEOMETRY_FIXUP_BIT, GeometryState+1
+	tst.l d0
+	beq.w fixupProjected
+	bsr.w failedProjectionGeometry
+	bra.w projectionBad
+fixupProjected
+	addq.w #2, sp
+	bra.w fixupStage
+encodeStage
+	bsr.w program
+	tst.l d0
+	bne.w stageBad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w stageBad
+	cmpi.w #2, d4
+	beq.w encodingVersion
+	cmpi.w #6, d4
+	bne.w stageBad
+encodingVersion
+	move.w #1, SEQUENCE_PHASE(a5)
+	bsr.w prepareExecution
+	; Saved sequence output length is at the top of the stage frame.
+	move.w 2(sp), encoding.Context.WriteOffset(a6)
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	clr.w encoding.Context.Unstable(a6)
+	clr.b encoding.Context.HasSymbol(a6)
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #4, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
+	tst.l d0
+	bne.w stageBad
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
+	move.l d1, (sp)
+	bra.w next
+fixupStage
+	tst.w SEQUENCE_PHASE(a5)
+	beq.w stageBad
+	bsr.w program
+	tst.l d0
+	bne.w stageBad
+	cmpi.w #PROGRAM_SEMANTIC, d2
+	bne.w stageBad
+	cmpi.w #4, d4
+	beq.w fixupVersion
+	cmpi.w #7, d4
+	bne.w stageBad
+fixupVersion
+	bsr.w prepareExecution
+	move.w 2(sp), encoding.Context.WriteOffset(a6)
+	move.l package.Context.Pc(a2), encoding.Context.Pc(a6)
+	move.w package.Context.Pass(a2), encoding.Context.Pass(a6)
+	move.l #Records, encoding.Context.Input(a6)
+	move.w package.Row.InputCount(a5), encoding.Context.InputCount(a6)
+	move.w #7, encoding.Context.FirstInputLen(a6)
+	jsr encoding.semantic
+	tst.l d0
+	beq.w fixupExecuted
+	; A failed VM may have read implicit PC before rejecting a range. Operand
+	; independence alone cannot certify that failure as placement-invariant.
+	bsr.w geometryUnproven
+	bra.w stageBad
+fixupExecuted
+	move.w encoding.Context.PositionDependent(a6), PositionDependent
+	move.w encoding.Context.FixupCount(a6), FixupCount
+	move.w encoding.Context.PositionProofCount(a6), PositionProofCount
+	move.w encoding.Context.PositionProofTarget(a6), PositionProofTarget
+	move.l encoding.Context.PositionFixupCount(a6), PositionFixupCount
+	move.l encoding.Context.PositionFixupIdentity(a6), PositionFixupIdentity
+	move.l encoding.Context.PositionField+encoding.RelativeField.Offset(a6), PositionField+encoding.RelativeField.Offset
+	move.l encoding.Context.PositionField+encoding.RelativeField.Width(a6), PositionField+encoding.RelativeField.Width
+	move.l encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6), PositionField+encoding.RelativeField.LittleEndian
+	move.l encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6), PositionField+encoding.RelativeField.Adjustment
+	move.l encoding.Context.PositionField+encoding.RelativeField.Value(a6), PositionField+encoding.RelativeField.Value
+	move.l encoding.Context.PositionField+encoding.RelativeField.Range(a6), PositionField+encoding.RelativeField.Range
+	move.l d1, (sp)
+	bra.w next
+match
+	tst.w SEQUENCE_PHASE(a5)
+	bne.w stageBad
+	cmpi.w #MISSING_PROGRAM, package.Row.Program(a5)
+	bne.w stageBad
+next
+	movem.l (sp)+, d6-d7/a4
+	adda.w #12, a4
+	subq.w #1, d7
+	bne.w loop
+	tst.w SEQUENCE_PHASE(a5)
+	beq.w bad
+	move.l d6, d1
+	lea Output, a1
+	moveq #0, d0
+	bra.w done
+projectionBad
+	addq.l #2, sp
+stageBad
+	movem.l (sp)+, d6-d7/a4
+bad
+	moveq #1, d0
+done
+	adda.w #ROW_BYTES, sp
+	movem.l (sp)+, d2-d7/a2-a5
+	rts
+	.bend  ; sequence
+
+; A failed fixup attempt cannot certify selection invariance. Caller already
+; owns failure status; preserve every register. Ordinary assembly skips proof.
+geometryUnproven	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+done
+	rts
+	.bend  ; geometryUnproven
+
+; Observe bounded operands before path/product helpers evaluate scalar leaves.
+; D0/CCR scratch; preserves other registers. Ordinary policy skips the scan.
+observeOperandGeometry	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	tst.w GeometryState
+	bne.w done
+	movem.l d1/a0, -(sp)
+	jsr references.geometryTokens
+	tst.l d0
+	beq.w independent
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+independent
+	movem.l (sp)+, d1/a0
+done
+	rts
+	.bend  ; observeOperandGeometry
+
+; Failed projection predicates do not necessarily evaluate a scalar: a wrapper
+; or register shape may simply mismatch. Only fully absolute original operands
+; prove such failure placement-invariant. Unknown or malformed spans fail closed.
+; Preserve D0 and other registers; never clear an earlier candidate observation.
+; Failed VM execution has its separate implicit-PC guard above.
+failedProjectionGeometry	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w done
+	tst.w GeometryState
+	bne.w done
+	movem.l d0-d2/a0-a1, -(sp)
+	moveq #0, d2
+next
+	cmp.w OperandCount, d2
+	bhs.w restored
+	move.w d2, d1
+	lsl.w #2, d1
+	lea OperandStart, a0
+	movea.l 0(a0, d1.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d1.w), a1
+	bsr.w observeOperandGeometry
+	tst.w GeometryState
+	bne.w restored
+	addq.w #1, d2
+	bra.w next
+restored
+	movem.l (sp)+, d0-d2/a0-a1
+done
+	rts
+	.bend  ; failedProjectionGeometry
+
+; Provider calls occur only under the private observation policy. Preserve
+; the original cursor on every non-handled return; no callback survives its owner.
+captureScalar	.block
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w unhandled
+	tst.l ScalarProvider
+	beq.w unhandled
+	movem.l a0/a3, -(sp)
+	movea.l ScalarProvider, a3
+	jsr (a3)
+	movea.l ScalarCall.Temporary(sp), a3
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w handled
+	movea.l ScalarCall.Cursor(sp), a0
+handled
+	adda.w #SCALAR_CALL_BYTES, sp
+	tst.l d0
+	rts
+unhandled
+	moveq #SCALAR_UNHANDLED, d0
+	rts
+	.bend  ; captureScalar
+
+; Project a known scalar through the package's bounded 32-bit bridge.
+; A0/A1=expression, A2=package.Context. Expression ABI and registers retained.
+; D0/CCR=status; reject values outside signed-i32/unsigned-u32 representation.
+evaluateScalar	.block
+	; Fixed VM programs have static emitted geometry. Their candidate ranges,
+	; value programs and opcode inputs must not observe movable addresses unless
+	; the field is explicitly owned by a later fixup. Retain observations across
+	; every attempted row, including one that subsequently fails its range.
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w evaluate
+	btst #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+	bne.w evaluate
+	btst #GEOMETRY_FIXUP_BIT, GeometryState+1
+	bne.w fixupScalar
+	movem.l d1/a0, -(sp)
+	jsr references.geometryExpression
+	tst.l d0
+	beq.w independent
+	movem.l (sp)+, d1/a0
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w captured
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+	bra.w evaluate
+independent
+	movem.l (sp)+, d1/a0
+	bra.w evaluate
+fixupScalar
+	; Fixup projections suppress ordinary geometry observations, but still
+	; need an exact-pair provider before the strict evaluator may cancel bases.
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	beq.w captured
+evaluate
+	jsr expression.evaluate
+	bra.w evaluated
+captured
+	moveq #0, d0
+evaluated
+	tst.l d0
+	bne.w done
+	tst.l d2
+	bne.w done
+	tst.l package.Context.High(a2)
+	beq.w done
+	cmpi.l #-1, package.Context.High(a2)
+	bne.w bad
+	tst.l d1
+	bmi.w ready
+bad
+	moveq #1, d0
+	bra.w done
+ready
+	moveq #0, d0
+done
+	tst.l d0
+	rts
+	.bend  ; evaluateScalar
+
+evaluateOperandZero	.block
+	movea.l OperandStart, a0
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w cursorReady
+	addq.l #1, a0
+cursorReady
+	movea.l OperandEnd, a1
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w malformed
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+malformed
+	moveq #1, d0
+	rts
+	.bend  ; evaluateOperandZero
+
+storeWord	.block
+	movea.l package.Context.Package(a2), a4
+	tst.w package.Header.LittleEndian(a4)
+	beq.w big
+	move.b d1, Records
+	lsr.w #8, d1
+	move.b d1, Records+1
+	rts
+big
+	move.w d1, Records
+	rts
+	.bend  ; storeWord
+
+; Resolve Row.Program. Returns D0 status, D2 kind, D4 version, A1/D1 bytes.
+program	.block
+	moveq #0, d0
+	move.w package.Row.Program(a5), d0
+	bra.w programId
+	.bend  ; program
+
+; D0=program ID; same outputs as program. D5 is preserved.
+programId	.block
+	move.l d5, -(sp)
+	movea.l package.Context.Package(a2), a4
+	cmp.l package.Header.ProgramCount(a4), d0
+	bhs.w bad
+	mulu.w #PROGRAM_BYTES, d0
+	add.l package.Header.Programs(a4), d0
+	bcs.w bad
+	move.l d0, d1
+	add.l #PROGRAM_BYTES, d1
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d1
+	bhi.w bad
+	movea.l a4, a3
+	adda.l d0, a3
+	moveq #0, d2
+	move.w package.Program.Kind(a3), d2
+	moveq #0, d4
+	move.w package.Program.Version(a3), d4
+	move.l package.Program.Offset(a3), d1
+	move.l d1, d5
+	add.l package.Program.Bytes(a3), d5
+	bcs.w bad
+	cmp.l package.Header.Bytes(a4), d5
+	bhi.w bad
+	movea.l a4, a1
+	adda.l d1, a1
+	move.l package.Program.Bytes(a3), d1
+	moveq #0, d0
+	move.l (sp)+, d5
+	rts
+bad
+	moveq #1, d0
+	move.l (sp)+, d5
+	tst.l d0
+	rts
+	.bend  ; programId
+
+; Materialize Row projections in the existing CSEM little-endian scalar ABI.
+project	.block
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	cmpi.w #16, d7
+	bhi.w bad
+	move.l d7, d0
+	mulu.w #PROJECTION_BYTES, d0
+	move.l package.Row.Inputs(a5), d1
+	add.l d1, d0
+	bcs.w bad
+	movea.l package.Context.Package(a2), a4
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	adda.l d1, a4
+	lea Records, a3
+	moveq #0, d6
+loop
+	cmp.w d7, d6
+	bhs.w done
+	tst.w d6
+	beq.w recordReady
+	move.b #4, (a3)+
+recordReady
+	.SELECTION_POSITION_PROJECTION Selection, package.Projection.Kind(a4)
+	moveq #0, d0
+	move.b package.Projection.Kind(a4), d0
+	cmpi.b #0, d0
+	beq.w expressionValue
+	cmpi.b #1, d0
+	beq.w registerValue
+	cmpi.b #2, d0
+	beq.w memberValue
+	cmpi.b #3, d0
+	beq.w constantValue
+	cmpi.b #4, d0
+	beq.w namedValue
+	cmpi.b #8, d0
+	beq.w wrappedRegister
+	cmpi.b #9, d0
+	beq.w wrappedRegister
+	cmpi.b #10, d0
+	beq.w wrappedRegister
+	cmpi.b #11, d0
+	beq.w tupleItem
+	cmpi.b #12, d0
+	beq.w tupleItem
+	cmpi.b #13, d0
+	beq.w tupleItem
+	cmpi.b #14, d0
+	beq.w tupleItem
+	cmpi.b #PROJECTION_TUPLE_IDENTITY, d0
+	beq.w tupleItem
+	cmpi.b #15, d0
+	beq.w targetExpression
+	cmpi.b #PROJECTION_TARGET_MEMBER, d0
+	beq.w memberValue
+	cmpi.b #17, d0
+	beq.w atomicTarget
+	cmpi.b #18, d0
+	beq.w registerMask
+	cmpi.b #PROJECTION_MEMBER_SHAPE, d0
+	beq.w memberShape
+	cmpi.b #PROJECTION_WRAPPED_SCALAR, d0
+	beq.w wrappedScalar
+	cmpi.b #PROJECTION_TUPLE_NAMED, d0
+	beq.w tupleNamed
+	cmpi.b #PROJECTION_SCALAR_EXPRESSION, d0
+	beq.w scalarExpression
+	cmpi.b #PROJECTION_CALL_REGISTER, d0
+	beq.w callRegister
+	cmpi.b #PROJECTION_CALL_WRAPPED_REGISTER, d0
+	beq.w callRegister
+	cmpi.b #PROJECTION_HASH_SCALAR, d0
+	beq.w hashScalar
+	cmpi.b #PROJECTION_PATH, d0
+	beq.w pathValue
+	bra.w bad
+expressionValue
+	move.w package.ScalarProjection.Flags(a4), d0
+	beq.w plainExpression
+	cmpi.w #package.SCALAR_ADDRESS_IDENTITY, d0
+	bne.w bad
+	cmpi.b #RECIPE_SEMANTIC_BRANCH, package.Row.Recipe(a5)
+	bne.w bad
+	cmpi.w #1, d6
+	bne.w bad
+	tst.b package.Projection.Operand(a4)
+	bne.w bad
+	bsr.w projectionExpression
+	tst.l d0
+	bne.w bad
+	bsr.w scalarIdentity
+	bra.w valueReady
+plainExpression
+	bsr.w projectionExpression
+	bra.w valueReady
+targetExpression
+	bsr.w projectionTargetExpression
+	bra.w valueReady
+atomicTarget
+	bsr.w projectionAtomicTarget
+	bra.w valueReady
+registerMask
+	bsr.w projectionRegisterMask
+	bra.w valueReady
+registerValue
+	bsr.w projectionRegister
+	bra.w valueReady
+namedValue
+	bsr.w projectionNamed
+	bra.w valueReady
+memberValue
+	bsr.w projectionMember
+	bra.w valueReady
+memberShape
+	bsr.w projectionMemberShape
+	bra.w valueReady
+wrappedRegister
+	bsr.w projectionWrappedRegister
+	bra.w valueReady
+tupleItem
+	bsr.w projectionTupleItem
+	bra.w valueReady
+wrappedScalar
+	bsr.w projectionWrappedScalar
+	bra.w valueReady
+tupleNamed
+	bsr.w projectionTupleNamed
+	bra.w valueReady
+callRegister
+	cmpi.w #$ffff, package.Projection.Class(a4)
+	beq.w bad
+	bsr.w operandSpan
+	bne.w valueReady
+	moveq #0, d1
+	move.w package.Projection.Reserved(a4), d1
+	cmpi.w #1, d1
+	bhi.w bad
+	tst.l package.Projection.Literal(a4)
+	bne.w bad
+	cmpi.b #PROJECTION_CALL_WRAPPED_REGISTER, package.Projection.Kind(a4)
+	beq.w wrappedCall
+	jsr tuples.callArgument
+	bra.w callSelected
+wrappedCall
+	jsr tuples.callWrappedRegister
+callSelected
+	bne.w valueReady
+	bsr.w register
+	bra.w valueReady
+scalarExpression
+	bsr.w projectionScalarExpression
+	bra.w valueReady
+pathValue
+	bsr.w operandSpan
+	bne.w valueReady
+	btst #package.POSITION_OBSERVATION_POLICY_BIT, package.Context.ExpressionPolicy+1(a2)
+	beq.w ordinaryPath
+	; The path owner observes only scalar terminals actually evaluated. A
+	; container mismatch is independent of the values inside that container.
+	jsr paths.evaluateGeometry
+	tst.l d1
+	beq.w pathEvaluated
+	bset #GEOMETRY_DEPENDENT_BIT, GeometryState+1
+	bra.w pathEvaluated
+ordinaryPath
+	jsr paths.evaluate
+pathEvaluated
+	tst.l d0
+	bne.w valueReady
+	tst.l d2
+	beq.w valueReady
+	move.w #1, Unresolved
+	bra.w valueReady
+hashScalar
+	bsr.w projectionHashScalar
+	bra.w valueReady
+constantValue
+	tst.w package.Projection.Reserved(a4)
+	bne.w bad  ; constants have no scalar identity metadata
+	move.l package.Projection.Literal(a4), d3
+	moveq #0, d0
+valueReady
+	tst.l d0
+	bne.w bad
+	move.w package.Projection.ValueProgram(a4), d0
+	cmpi.w #MISSING_PROGRAM, d0
+	beq.w store
+	bsr.w valueProgram
+	tst.l d0
+	bne.w bad
+store
+	ror.w #8, d3
+	swap d3
+	ror.w #8, d3
+	move.l d3, (a3)+
+	adda.w #PROJECTION_BYTES, a4
+	addq.w #1, d6
+	bra.w loop
+done
+	tst.w Unresolved
+	beq.w ok
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; project
+
+; Match a scalar expression containing a symbol, including absolute constants.
+; ExprVM supplies symbol presence. Relocatable current-PC expressions also name
+; an address base, classified by the shared bounded reference proof.
+projectionTargetExpression	.block
+	movem.l d1-d2/d4/a0-a1/a6, -(sp)
+	bsr.w operandSpan
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w ready
+	addq.l #1, a0
+ready
+	movea.l a0, a6
+	jsr expression.evaluateWithSymbols
+	tst.l d0
+	beq.w evaluated
+	movea.l a6, a0
+	bsr.w captureScalar
+	cmpi.l #SCALAR_HANDLED, d0
+	bne.w captureFailed
+	moveq #1, d4  ; the provider permits only exact symbol-pair expressions
+	bra.w evaluated
+captureFailed
+	bsr.w failedProjectionGeometry
+	moveq #1, d0
+	bra.w done
+evaluated
+	cmpa.l a1, a0
+	bne.w bad
+	tst.l d4
+	bne.w targetPresent
+	tst.w package.Context.Relocatable(a2)
+	beq.w bad
+	movea.l a6, a0
+	jsr references.targets
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w bad
+targetPresent
+	tst.l d2
+	beq.w matched
+	move.w #1, Unresolved
+matched
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d2/d4/a0-a1/a6
+	moveq #0, d3
+	tst.l d0
+	rts
+	.bend  ; projectionTargetExpression
+
+; Match an immediate or direct operand that names exactly one relocation
+; target. This is a package predicate, so it projects zero rather than the
+; current target address; the later fixup stage resolves and records the ID.
+projectionAtomicTarget	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bhs.w invalid
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w target
+	addq.l #1, a0
+target
+	bsr.w exactTarget
+	tst.l d0
+	bne.w return
+	moveq #0, d3
+return
+	rts
+invalid
+	moveq #1, d0
+	rts
+	.bend  ; projectionAtomicTarget
+
+; Build the package fixup VM's seven-byte numeric input records. Scalar
+; expressions transport identity only when the generic affine proof succeeds.
+; Hunk targets are canonical section IDs, so a PC base needs no fabricated symbol.
+; The Hunk caller rejects section-bearing operands without a package fixup.
+projectFixup	.block
+	moveq #0, d7
+	move.w package.Row.InputCount(a5), d7
+	beq.w bad
+	cmpi.w #16, d7
+	bhi.w bad
+	move.l d7, d0
+	mulu.w #PROJECTION_BYTES, d0
+	move.l package.Row.Inputs(a5), d1
+	add.l d1, d0
+	bcs.w bad
+	movea.l package.Context.Package(a2), a4
+	cmp.l package.Header.Bytes(a4), d0
+	bhi.w bad
+	adda.l d1, a4
+	lea Records, a3
+	moveq #0, d6
+nextFixupInput
+	cmp.w d7, d6
+	bhs.w good
+	tst.w d6
+	beq.w inputReady
+	move.b #7, (a3)+
+inputReady
+	.SELECTION_POSITION_PROJECTION Selection, package.Projection.Kind(a4)
+	cmpi.b #15, package.Projection.Kind(a4)
+	beq.w scalarTarget
+	; Scalar fixups share the same bounded identity proof; literals have no target.
+	cmpi.b #PROJECTION_EXPRESSION, package.Projection.Kind(a4)
+	beq.w scalarTarget
+	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
+	beq.w memberTarget
+	cmpi.b #12, package.Projection.Kind(a4)
+	bne.w bad
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+	bsr.w tupleProjectionSpan
+	tst.l d0
+	bne.w bad
+	bra.w targetSpanReady
+memberTarget
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+	bsr.w memberBase
+	bne.w bad
+	bra.w targetSpanReady
+scalarTarget
+	bsr.w operandSpan
+	tst.l d0
+	bne.w bad
+targetSpanReady
+	move.w #$ffff, ProjectedTarget
+	move.l #references.NO_BASE, ProjectedIdentity
+	cmpa.l a1, a0
+	bhs.w bad
+	; Validate the scalar before proving relocation identity. In pass one an
+	; undefined label has no usable section provenance yet; ExprVM owns that
+	; unresolved decision. Preserve the bounded span for resolved-value proof.
+	movem.l a0-a1, -(sp)
+	cmpi.b #12, package.Projection.Kind(a4)
+	bne.w scalarValue
+	bsr.w projectionTupleItem
+	bra.w valueProjected
+scalarValue
+	cmpi.b #PROJECTION_TARGET_MEMBER, package.Projection.Kind(a4)
+	bne.w expressionValue
+	bsr.w projectionMember
+	bra.w valueProjected
+expressionValue
+	bsr.w projectionExpression
+valueProjected
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	bne.w bad
+	tst.w Unresolved
+	bne.w targetReady
+	; The immediate marker is syntax, not part of the target identity.
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w targetName
+	addq.l #1, a0
+targetName
+	cmpa.l a1, a0
+	bhs.w bad
+	; Exact-name probing may advance even on failure. The bounded proof starts
+	; at the original operand, not at the probe's failure cursor.
+	move.l a0, -(sp)
+	bsr.w exactTarget
+	movea.l (sp)+, a0
+	tst.l d0
+	beq.w exactIdentity
+	; The generic postfix proof transports one base through absolute addends.
+	; Numeric evaluation still belongs to ExprVM; unsafe address algebra fails.
+	cmpi.b #expression.VALUE_TAG, (a0)
+	beq.w affineIdentity
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w targetReady
+affineIdentity
+	jsr references.affineTarget
+	cmpi.l #references.STATUS_BAD, d0
+	beq.w bad
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w targetReady
+	bra.w bindTarget
+exactIdentity
+	cmpi.l #references.CURRENT_PC_BASE, d1
+	beq.w bindTarget
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
+	movea.l package.Context.Defined(a2), a0
+	tst.b 0(a0, d1.l)
+	beq.w targetReady
+	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
+	beq.w targetReady
+	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
+	beq.w targetReady
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
+	beq.w targetReady
+bindTarget
+	; Keep a source identity separate from canonical Hunk section provenance.
+	; Typed section-only proofs cannot identify a module fragment or import.
+	cmpi.l #references.CURRENT_PC_BASE, d1
+	bhi.w identityReady
+	move.l d1, ProjectedIdentity
+identityReady
+	tst.w package.Context.Relocatable(a2)
+	beq.w storeTarget
+	jsr references.baseSection
+	bne.w bad
+storeTarget
+	move.w d1, ProjectedTarget
+targetReady
+	moveq #0, d0
+	cmpi.w #$ffff, ProjectedTarget
+	beq.w targetFlagReady
+	moveq #1, d0
+targetFlagReady
+	tst.w Unresolved
+	beq.w valueReady
+	cmpi.w #1, package.Context.Pass(a2)
+	bne.w bad
+	ori.b #2, d0
+	move.w #$ffff, ProjectedTarget
+	move.l #references.NO_BASE, ProjectedIdentity
+valueReady
+	move.l d6, d1
+	lsl.l #2, d1
+	lea InputIdentities, a0
+	move.l ProjectedIdentity, 0(a0, d1.l)
+	move.b d0, (a3)+
+	ror.w #8, d3
+	swap d3
+	ror.w #8, d3
+	move.l d3, (a3)+
+	move.w ProjectedTarget, (a3)+
+	adda.w #PROJECTION_BYTES, a4
+	addq.w #1, d6
+	bra.w nextFixupInput
+good
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectFixup
+
+projectionExpression	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w ready
+	addq.l #1, a0
+ready
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionExpression
+
+; Require the package-selected immediate wrapper before ordinary scalar
+; evaluation. A4=projection; D0=status, D3=value on success; CCR unspecified.
+projectionHashScalar	.block
+	tst.w package.Projection.Class(a4)
+	bne.w bad
+	tst.l package.Projection.Literal(a4)
+	bne.w bad
+	tst.w package.Projection.Reserved(a4)
+	bne.w bad
+	bsr.w operandSpan
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w bad
+	bra.w projectionExpression
+bad
+	moveq #1, d0
+done
+	rts
+	.bend  ; projectionHashScalar
+
+; Bind optional scalar address identity after expression validation. In Hunk
+; mode the bounded affine proof supplies a canonical section for symbols or PC.
+; Flat mode retains exact symbol identity; unresolved and absolute values have none.
+; D0/CCR=status; all projected values and caller registers are retained.
+scalarIdentity	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	bsr.w operandSpan
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #TOKEN_HASH, (a0)
+	bne.w target
+	addq.l #1, a0
+target
+	tst.w package.Context.Relocatable(a2)
+	beq.w exact
+	tst.w Unresolved
+	bne.w absent
+	cmpi.b #expression.VALUE_TAG, (a0)
+	beq.w affineIdentity
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w exact
+affineIdentity
+	jsr references.affineTarget
+	cmpi.l #references.STATUS_BAD, d0
+	beq.w bad
+	cmpi.l #references.STATUS_SECTION, d0
+	bne.w absent
+	bra.w bind
+exact
+	bsr.w exactTarget
+	tst.l d0
+	bne.w absent
+	cmp.l package.Context.Count(a2), d1
+	bhs.w bad
+	movea.l package.Context.Defined(a2), a0
+	tst.b 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #dependencies.ABSOLUTE, 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #mutable.DEFINED, 0(a0, d1.l)
+	beq.w absent
+	cmpi.b #mutable.SNAPSHOT_ABSOLUTE, 0(a0, d1.l)
+	beq.w absent
+bind
+	move.l d1, ScalarOriginalIdentity
+	tst.w package.Context.Relocatable(a2)
+	beq.w store
+	jsr references.baseSection
+	bne.w bad
+store
+	move.w d1, ScalarTarget
+absent
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; scalarIdentity
+
+projectionRegister	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w register
+return
+	rts
+	.bend  ; projectionRegister
+
+projectionNamed	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w exactName
+	tst.l d0
+	bne.w return
+	cmp.w package.Projection.Class(a4), d1
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d0
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionNamed
+
+; A0/A1=bounded member wrapper, A4=package projection. Return the compiled
+; scalar base in A0/A1 after validating the package's numeric field identity.
+; D0/CCR=status; clobbers A0/A1/A6. No field spelling or value is interpreted.
+memberBase	.block
+	jsr shapes.isMember
+	beq.w bad
+	movea.l a1, a6
+	subq.l #6, a6
+	moveq #0, d0
+	move.b 3(a6), d0
+	lsl.w #8, d0
+	move.b 4(a6), d0
+	cmp.w package.Projection.Class(a4), d0
+	bne.w bad
+	addq.l #1, a0
+	movea.l a6, a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; memberBase
+
+; Shape-only package predicates validate the wrapper without evaluating its
+; base. Forward and section-bearing names therefore remain valid matches.
+projectionMemberShape	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w memberBase
+return
+	moveq #0, d3
+	tst.l d0
+	rts
+	.bend  ; projectionMemberShape
+
+projectionMember	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	bsr.w memberBase
+	bne.w return
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionMember
+
+projectionWrappedRegister	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.b #9, package.Projection.Kind(a4)
+	beq.w tailUpdate
+	cmpi.b #10, package.Projection.Kind(a4)
+	beq.w headUpdate
+	cmpi.l #6, d0
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w bad
+	subq.l #1, a1
+	bra.w projectRegister
+tailUpdate
+	cmpi.l #7, d0
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -2(a1)
+	bne.w bad
+	cmpi.b #TOKEN_PLUS, -1(a1)
+	bne.w bad
+	subq.l #2, a1
+	bra.w projectRegister
+headUpdate
+	cmpi.l #7, d0
+	bne.w bad
+	cmpi.b #TOKEN_MINUS, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_OPEN_PAREN, (a0)+
+	bne.w bad
+	cmpi.b #TOKEN_CLOSE_PAREN, -1(a1)
+	bne.w bad
+	subq.l #1, a1
+projectRegister
+	bsr.w register
+return
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionWrappedRegister
+
+; Tuple fields retain exact arity and item index from the package selector.
+; Shared bounds expose scalar/name leaves; classes and qualifiers remain package data.
+projectionTupleItem	.block
+	cmpi.b #14, package.Projection.Kind(a4)
+	beq.w arity
+	bsr.w tupleProjectionSpan
+	bne.w return
+	cmpi.b #12, package.Projection.Kind(a4)
+	beq.w scalar
+	cmpi.b #PROJECTION_TUPLE_IDENTITY, package.Projection.Kind(a4)
+	beq.w identity
+	bsr.w tupleRegisterLeaf
+	bne.w return
+	cmpi.b #11, package.Projection.Kind(a4)
+	beq.w register
+	cmpi.b #13, package.Projection.Kind(a4)
+	bne.w bad
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	cmpi.b #TOKEN_SYMBOL_1, (a0)
+	bhi.w bad
+	moveq #0, d0
+	move.b 3(a0), d0
+	cmp.w package.Projection.Literal+2(a4), d0
+	bne.w bad
+	moveq #0, d1
+	move.b 1(a0), d1
+	lsl.w #8, d1
+	move.b 2(a0), d1
+	bra.w lookupRegister
+identity
+	bsr.w observeOperandGeometry
+	movem.l d4-d5, -(sp)
+	moveq #1, d4
+	moveq #0, d5
+	move.w package.Projection.Class(a4), d5
+	jsr products.resolveIdentity
+	movem.l (sp)+, d4-d5
+	bra.w return
+scalar
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w return
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w return
+	move.w #1, Unresolved
+	bra.w return
+arity
+	bsr.w operandSpan
+	bne.w return
+	moveq #0, d0
+	move.w package.Projection.Class(a4), d0
+	moveq #0, d1
+	jsr tuples.select
+return
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; projectionTupleItem
+
+; A0/A1=selected tuple leaf, A4=package projection. Unscaled names stay
+; intact. A product may expose its opposite child only after ExprVM proves
+; the package-selected identity. A0/A1=selected name; D0/CCR=status.
+tupleRegisterLeaf	.block
+	cmpi.b #products.BINARY_TAG, (a0)
+	bne.w plain
+	bsr.w observeOperandGeometry
+	movem.l d4-d5, -(sp)
+	moveq #0, d4
+	moveq #0, d5
+	move.w package.Projection.Literal(a4), d5
+	jsr products.resolveIdentity
+	movem.l (sp)+, d4-d5
+	rts
+plain
+	moveq #0, d0
+	rts
+	.bend  ; tupleRegisterLeaf
+
+; A4=descriptor. Return A0/A1 as its bounded tuple leaf, D0/CCR=status.
+; Other clobbers match operandSpan and tuples.select; no value is evaluated.
+tupleProjectionSpan	.block
+	bsr.w operandSpan
+	bne.w done
+	moveq #0, d0
+	move.b package.Projection.Reserved(a4), d0
+	beq.w arityReady
+	cmpi.l #2, d0
+	blo.w bad
+	cmpi.l #3, d0
+	bhi.w bad
+arityReady
+	moveq #0, d1
+	move.b package.Projection.Reserved+1(a4), d1
+	jsr tuples.select
+	bra.w done
+bad
+	moveq #1, d0
+done
+	tst.l d0
+	rts
+	.bend  ; tupleProjectionSpan
+
+; Complete tuple structure disproves a scalar root without evaluating values.
+; D0=arity (2/3), or zero unknown; other registers preserved.
+tupleArity	.block
+	movem.l d3/a0-a1, -(sp)
+	jsr tuples.count
+	tst.l d0
+	bne.w unknown
+	move.l d3, d0
+	bra.w done
+unknown
+	moveq #0, d0
+done
+	movem.l (sp)+, d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; tupleArity
+
+projectionScalarExpression	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr shapes.isScalar
+	cmpi.l #1, d0
+	bne.w bad
+	bra.w projectionExpression
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
+projectionWrappedScalar	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr wrappers.scalar
+	bne.w done
+	bsr.w evaluateScalar
+	tst.l d0
+	bne.w done
+	cmpa.l a1, a0
+	bne.w bad
+	move.l d1, d3
+	tst.l d2
+	beq.w done
+	move.w #1, Unresolved
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
+projectionTupleNamed	.block
+	bsr.w operandSpan
+	bne.w done
+	jsr wrappers.tuple
+	bne.w done
+	movea.l a6, a0
+	lea 4(a0), a1
+	bsr.w exactName
+	bne.w done
+	cmp.w package.Projection.Class(a4), d1
+	bne.w bad
+	moveq #0, d3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	rts
+	.bend
+
+; Project a package-mapped register mask through the reusable bounded list
+; parser. The map and reversal reside in this row's projection metadata.
+projectionRegisterMask	.block
+	bsr.w operandSpan
+	tst.l d0
+	bne.w return
+	movem.l a4-a5, -(sp)
+	movea.l package.Context.Package(a2), a5
+	jsr register_mask.project
+	movem.l (sp)+, a4-a5
+return
+	rts
+	.bend  ; projectionRegisterMask
+
+operandSpan	.block
+	moveq #0, d0
+	move.b package.Projection.Operand(a4), d0
+	cmp.w OperandCount, d0
+	bhs.w bad
+	lsl.w #2, d0
+	lea OperandStart, a1
+	movea.l 0(a1, d0.w), a0
+	lea OperandEnd, a1
+	movea.l 0(a1, d0.w), a1
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; operandSpan
+
+; A0/A1=operand; D0=status,D1=numeric symbol ID or CURRENT_PC_BASE.
+; Exact ExprVM leaves retain their identity without evaluating source syntax.
+; The PC leaf is a target only inside relocatable output; flat PC is absolute.
+exactTarget	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w symbol
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w plain
+	cmpi.b #2, 1(a0)
+	bne.w bad
+	cmpi.b #exprvm.EXPRVM_OPCODE_PUSH_CURRENT_ADDR, 2(a0)
+	bne.w bad
+	tst.b 3(a0)
+	bne.w bad
+	tst.w package.Context.Relocatable(a2)
+	beq.w bad
+	tst.w package.Context.CurrentSection(a2)
+	beq.w bad
+	move.l #references.CURRENT_PC_BASE, d1
+	bra.w ready
+symbol
+	cmpi.l #6, d0
+	bne.w plain
+	cmpi.b #expression.COMPILED_TAG, (a0)
+	bne.w plain
+	cmpi.b #4, 1(a0)
+	bne.w bad
+	cmpi.b #exprvm.EXPRVM_OPCODE_PUSH_SYMBOL, 2(a0)
+	bne.w bad
+	tst.b 5(a0)
+	bne.w bad
+	moveq #0, d1
+	move.b 4(a0), d1
+	lsl.w #8, d1
+	move.b 3(a0), d1
+ready
+	movea.l a1, a0
+	moveq #0, d0
+	rts
+plain
+	bsr.w exactName
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; exactTarget
+
+; A0/A1=operand; D0=status, D1=name ID on success. Advances A0; CCR=D0.
+; Only an exact unqualified numeric name can prove a package predicate.
+exactName	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	bne.w bad
+	moveq #0, d0
+	move.b (a0)+, d0
+	cmpi.b #TOKEN_SYMBOL_0, d0
+	beq.w symbol
+	cmpi.b #TOKEN_SYMBOL_1, d0
+	bne.w bad
+symbol
+	moveq #0, d1
+	move.b (a0)+, d1
+	lsl.w #8, d1
+	move.b (a0)+, d1
+	tst.b (a0)+
+	bne.w bad
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; exactName
+
+; Exact numeric name plus package register-class lookup.
+register	.block
+	bsr.w exactName
+	tst.l d0
+	beq.w lookup
+	rts
+lookup
+	bra.w lookupRegister
+	.bend  ; register
+
+lookupRegister	.block
+	movea.l package.Context.Package(a2), a6
+	move.l package.Header.RegisterRows(a6), d0
+	move.l package.Header.RegisterCount(a6), d2
+	cmpi.l #$ffff, d2
+	bhi.w bad  ; MULU.W must cover the complete count used by the scan
+	move.l d2, d4
+	mulu.w #6, d4
+	add.l d0, d4
+	bcs.w bad
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w bad
+	adda.l d0, a6
+loop
+	tst.l d2
+	beq.w bad
+	cmp.w (a6), d1
+	bne.w next
+	move.w package.Projection.Class(a4), d0
+	cmp.w 2(a6), d0
+	bne.w next
+	moveq #0, d3
+	move.w 4(a6), d3
+	moveq #0, d0
+	rts
+next
+	addq.l #6, a6
+	subq.l #1, d2
+	bra.w loop
+bad
+	moveq #1, d0
+	rts
+	.bend  ; lookupRegister
+
+valueProgram	.block
+	move.w d0, -(sp)
+	movea.l package.Context.Package(a2), a6
+	moveq #0, d1
+	move.w d0, d1
+	cmp.l package.Header.ProgramCount(a6), d1
+	bhs.w badPop
+	mulu.w #PROGRAM_BYTES, d1
+	add.l package.Header.Programs(a6), d1
+	bcs.w badPop
+	move.l d1, d2
+	addi.l #PROGRAM_BYTES, d2
+	bcs.w badPop
+	cmp.l package.Header.Bytes(a6), d2
+	bhi.w badPop  ; validate the descriptor before reading any of its fields
+	movea.l a6, a0
+	adda.l d1, a0
+	cmpi.w #PROGRAM_VALUE, package.Program.Kind(a0)
+	bne.w badPop
+	move.l package.Program.Offset(a0), d1
+	move.l package.Program.Bytes(a0), d2
+	move.l d1, d4
+	add.l d2, d4
+	bcs.w badPop
+	cmp.l package.Header.Bytes(a6), d4
+	bhi.w badPop
+	moveq #0, d0
+	move.w package.Program.Version(a0), d0
+	movea.l a6, a1
+	adda.l d1, a1
+	move.l d2, d1
+	movem.l d1-d2/d4-d7/a0-a6, -(sp)
+	jsr value.execute
+	movem.l (sp)+, d1-d2/d4-d7/a0-a6
+	addq.l #2, sp
+	rts
+badPop
+	addq.l #2, sp
+	moveq #1, d0
+	rts
+	.bend  ; valueProgram
+
+; Own the minimal execution state; no service or assembler globals are imported.
+; A6=context, all other registers preserved. Fixups are a bounded numeric
+; side channel owned by this encoder and consumed by the assembly layer.
+prepareExecution	.block
+	lea Execution, a6
+	move.l #Output, encoding.Context.Output(a6)
+	move.l #4096, encoding.Context.Capacity(a6)
+	clr.w encoding.Context.WriteOffset(a6)
+	move.w FixupCount, encoding.Context.FixupCount(a6)
+	move.w #16, encoding.Context.FixupCapacity(a6)
+	move.l #FixupOffsets, encoding.Context.FixupOffsets(a6)
+	move.l #FixupAddends, encoding.Context.FixupAddends(a6)
+	move.l #FixupWidths, encoding.Context.FixupWidths(a6)
+	move.l #FixupTargets, encoding.Context.FixupTargets(a6)
+	move.l #InputIdentities, encoding.Context.InputIdentities(a6)
+	move.l #FixupIdentities, encoding.Context.FixupIdentities(a6)
+	move.w PositionDependent, encoding.Context.PositionDependent(a6)
+	move.w PositionProofCount, encoding.Context.PositionProofCount(a6)
+	move.w PositionProofTarget, encoding.Context.PositionProofTarget(a6)
+	move.l PositionFixupCount, encoding.Context.PositionFixupCount(a6)
+	move.l PositionFixupIdentity, encoding.Context.PositionFixupIdentity(a6)
+	move.l PositionField+encoding.RelativeField.Offset, encoding.Context.PositionField+encoding.RelativeField.Offset(a6)
+	move.l PositionField+encoding.RelativeField.Width, encoding.Context.PositionField+encoding.RelativeField.Width(a6)
+	move.l PositionField+encoding.RelativeField.LittleEndian, encoding.Context.PositionField+encoding.RelativeField.LittleEndian(a6)
+	move.l PositionField+encoding.RelativeField.Adjustment, encoding.Context.PositionField+encoding.RelativeField.Adjustment(a6)
+	move.l PositionField+encoding.RelativeField.Value, encoding.Context.PositionField+encoding.RelativeField.Value(a6)
+	move.l PositionField+encoding.RelativeField.Range, encoding.Context.PositionField+encoding.RelativeField.Range(a6)
+	move.w ScalarTarget, encoding.Context.InputTarget(a6)
+	clr.w encoding.Context.MnemonicLength(a6)
+	rts
+	.bend  ; prepareExecution
+	.endsection
+	.endmodule

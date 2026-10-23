@@ -183,7 +183,7 @@ fn native_forward_count_fs_uae() {
         let build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.join("native"),
-            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &root.join("native/motorola68000/amigaos/main.asm"),
             &EmbedSelection::Targets(vec!["68020".into()]),
         )
         .unwrap();

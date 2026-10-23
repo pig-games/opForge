@@ -22,13 +22,13 @@ fn probe_snapshot(root: &Path, dir: &Path) -> PathBuf {
     // its compact CLI source is changed; production sources stay untouched.
     let snapshot = dir.join("native-snapshot");
     copy_tree(&root.join("native"), &snapshot.join("native"));
-    let app = snapshot.join("native/motorola68000/amigaos/experimental/binary_app.asm");
+    let app = snapshot.join("native/motorola68000/amigaos/assembler/driver.asm");
     let source = fs::read_to_string(&app).unwrap();
-    let import = "\t.use experimental.amigaos.binary_assembly as assembly\n";
+    let import = "\t.use opforge.assembler.layout.assembly as assembly\n";
     assert_eq!(source.matches(import).count(), 1);
     let source = source.replace(
         import,
-        &format!("{import}\t.use tests.amigaos.binary_assembly_session_probe as probe\n"),
+        &format!("{import}\t.use opforge.tests.assembler.assembly_session_probe as probe\n"),
     );
     assert_eq!(source.matches("\tjsr assembly.assemble\n").count(), 1);
     fs::write(

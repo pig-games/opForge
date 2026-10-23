@@ -10,16 +10,17 @@ fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
         "opForge".to_string(),
         build.cli_source_path.to_string_lossy().into_owned(),
     ];
-    let mut roots: Vec<_> = fs::read_dir(root.join("native"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .collect();
-    roots.sort();
-    for path in roots {
-        args.extend(["-M".into(), path.to_string_lossy().into_owned()]);
-    }
     args.extend([
+        "-M".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
+    ]);
+    args.extend([
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
         "-I".into(),
         root.join("native/motorola68000/amigaos/debug")
             .to_string_lossy()
@@ -29,7 +30,7 @@ fn assemble_cli(root: &Path, build: &NativePackageBuild) -> Vec<u8> {
     let mut config = validate_cli(&cli).unwrap();
     config.out_dir = Some(build.output_dir.clone());
     run_with_validated_cli_with_context(&cli, &config).expect("assemble configured CLI");
-    fs::read(build.output_dir.join("build/opforge_compact")).unwrap()
+    fs::read(build.output_dir.join("build/opforge")).unwrap()
 }
 fn oracle(scratch: &Path, cpu: &str, source: &[u8]) -> Vec<u8> {
     let input = scratch.join(format!("{cpu}.asm"));
@@ -74,7 +75,7 @@ fn native_package_loader_selection_and_rejections() {
     fs::create_dir(&scratch).unwrap();
     let _cleanup = EphemeralArtifactDir(scratch.clone());
     let registry = engine::build_default_asm_registry();
-    let template = root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm");
+    let template = root.join("native/motorola68000/amigaos/main.asm");
     let external = build_native_packages(
         &registry,
         &scratch.join("external"),

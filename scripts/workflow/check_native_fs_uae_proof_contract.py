@@ -88,16 +88,18 @@ def validate(root: Path = ROOT) -> list[str]:
     for token in required_runner_tokens:
         if token not in runner:
             errors.append(f"{RUNNER}: missing proof-contract token {token!r}")
-    if runner.count("let ephemeral_artifact_dir = EphemeralArtifactDir") < 3:
-        errors.append(f"{RUNNER}: every FS-UAE execution path must own ephemeral artifacts")
-    if runner.count("success: protocol_completed && guest_exit_code == Some(0)") < 2:
-        errors.append(
-            f"{RUNNER}: non-parity FS-UAE success must require guest completion and zero exit"
-        )
-    if runner.count("require_completed_guest_protocol(") < 3:
-        errors.append(
-            f"{RUNNER}: every generic FS-UAE result must fail closed before it reaches a test"
-        )
+    # The two live launch paths own cleanup; retired guest-input launchers
+    # must not inflate a lexical count or hide a missing current safeguard.
+    for function in ("run_native_cli_parity_batch_cases", "run_example_smoke_with_request"):
+        match = re.search(r"(?ms)^fn " + function + r"\b.*?^}", runner)
+        body = match.group(0) if match else ""
+        for token in ("let ephemeral_artifact_dir = EphemeralArtifactDir", "drop(ephemeral_artifact_dir)"):
+            if token not in body:
+                errors.append(f"{RUNNER}: {function} must own ephemeral artifacts: {token}")
+        if function == "run_example_smoke_with_request":
+            for token in ("success: protocol_completed && guest_exit_code == Some(0)", "require_completed_guest_protocol("):
+                if token not in body:
+                    errors.append(f"{RUNNER}: non-parity FS-UAE success must require guest completion and zero exit: {token}")
 
     forbidden_tokens = (
         "record_last_green_fs_uae_test_run",

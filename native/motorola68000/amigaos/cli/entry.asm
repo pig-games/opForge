@@ -1,0 +1,198 @@
+; Shell entry and argument policy; assembly belongs to the driver.
+; @opforge-owner: opforge.cli.entry
+	.module opforge.cli.entry
+	.cpu 68020
+	.use opforge.assembler.driver as app
+	.use opforge.cli.arguments as args
+	.use opforge.cli.input as input
+	.use opforge.cli.target as target
+OPEN_LIBRARY = -552
+CLOSE_LIBRARY = -414
+GET_ARG_STR = -534
+PUT_STR = -948
+	.section code, kind=code
+	.pub
+; Shell entry: A0=checked catalog image; D0=AmigaDOS exit code.
+; Preserves D2-D7/A2-A6. The composition root retains the catalog throughout.
+start	.block
+	movem.l d2-d7/a2-a6, -(sp)
+	move.l a0, CatalogPointer
+	lea DosName, a1
+	moveq #36, d0
+	movea.l 4.w, a6
+	jsr OPEN_LIBRARY(a6)
+	tst.l d0
+	beq.w unavailable
+	move.l d0, DosBase
+	movea.l d0, a6
+	jsr GET_ARG_STR(a6)
+	tst.l d0
+	bne.w tail
+	move.l #EmptyArgs, d0
+tail
+	movea.l d0, a0
+	lea Arguments, a1
+	jsr args.parse
+	cmpi.l #args.HELP, d0
+	beq.w help
+	cmpi.l #args.VERSION, d0
+	beq.w version
+	tst.l d0
+	bne.w badArguments
+	; Preserve whether the CLI requested a derived output name before the
+	; resolver fills State.Output from the input basename.
+	tst.w args.State.OutputKind(a1)
+	beq.s outputDefaultReady
+	tst.b args.State.Output(a1)
+	bne.s outputDefaultReady
+	move.w #1, args.State.OutputDefault(a1)
+outputDefaultReady
+	lea Arguments, a0
+	lea Root, a1
+	jsr input.resolve
+	bne.w badInput
+	lea Arguments, a0
+	jsr target.select
+	bne.w missingTarget
+	lea Arguments, a2
+	lea Config, a0
+	lea args.State.Input(a2), a1
+	move.l a1, app.Frame.SourcePath(a0)
+	lea args.State.Output(a2), a1
+	move.l a1, app.Frame.OutputPath(a0)
+	lea args.State.OutputBase(a2), a1
+	move.l a1, app.Frame.OutputBase(a0)
+	move.w args.State.OutputDefault(a2), app.Frame.OutputDefault(a0)
+	move.w args.State.WarningsAsErrors(a2), app.Frame.WarningsAsErrors(a0)
+	move.w #2, app.Frame.Mode(a0)
+	move.w args.State.OutputKind(a2), app.Frame.OutputKind(a0)
+	bne.w outputConfigured
+	move.w #3, app.Frame.OutputKind(a0)
+outputConfigured
+	move.w args.State.StartSet(a2), app.Frame.StartSet(a0)
+	move.l args.State.Start(a2), app.Frame.Start(a0)
+	lea args.State.ModulePaths(a2), a1
+	move.l a1, app.Frame.ModuleRoots(a0)
+	move.l args.State.ModuleCount(a2), app.Frame.ModuleCount(a0)
+	lea args.State.IncludePaths(a2), a1
+	move.l a1, app.Frame.IncludeRoots(a0)
+	move.l args.State.IncludeCount(a2), app.Frame.IncludeCount(a0)
+	move.l CatalogPointer, app.Frame.Catalog(a0)
+	movea.l CatalogPointer, a1
+	move.l (a1), app.Frame.CatalogBytes(a0)
+	tst.b args.State.RuntimePackage(a2)
+	beq.w namedCpu
+	lea args.State.RuntimePackage(a2), a1
+	move.l a1, app.Frame.PackagePath(a0)
+	bra.w optional
+namedCpu
+	tst.b args.State.Cpu(a2)
+	beq.w missingTarget
+	lea args.State.Cpu(a2), a1
+	move.l a1, app.Frame.Cpu(a0)
+optional
+	tst.b args.State.Dialect(a2)
+	beq.w packageRoot
+	lea args.State.Dialect(a2), a1
+	move.l a1, app.Frame.Dialect(a0)
+packageRoot
+	move.l #DefaultRoot, app.Frame.PackageRoot(a0)
+	tst.b args.State.PackageRoot(a2)
+	beq.w captureDirectory
+	lea args.State.PackageRoot(a2), a1
+	move.l a1, app.Frame.PackageRoot(a0)
+captureDirectory
+	tst.b args.State.CaptureDirectory(a2)
+	beq.w execute
+	lea args.State.CaptureDirectory(a2), a1
+	move.l a1, app.Frame.CaptureDirectory(a0)
+execute
+	lea args.State.IncrementalDirectory(a2), a1
+	move.l a1, app.Frame.IncrementalDirectory(a0)
+	move.w args.State.Rebuild(a2), app.Frame.Rebuild(a0)
+	move.w args.State.Quiet(a2), app.Frame.Quiet(a0)
+	move.w args.State.ReferenceModules(a2), app.Frame.ReferenceModules(a0)
+	bsr.w closeDos
+	lea Config, a0
+	jsr app.execute
+	bra.w done
+help
+	move.l #UsageText, d1
+	bra.w information
+version
+	move.l #VersionText, d1
+information
+	movea.l DosBase, a6
+	jsr PUT_STR(a6)
+	bsr.w closeDos
+	moveq #0, d0
+	bra.w done
+badArguments
+	move.l #ArgumentError, d1
+	bra.w error
+badInput
+	move.l #InputError, d1
+	bra.w error
+missingTarget
+	move.l #TargetError, d1
+	bra.w error
+error
+	movea.l DosBase, a6
+	jsr PUT_STR(a6)
+	bsr.w closeDos
+unavailable
+	moveq #20, d0
+done
+	movem.l (sp)+, d2-d7/a2-a6
+	rts
+	.bend  ; start
+	.priv
+closeDos	.block
+	movea.l DosBase, a1
+	movea.l 4.w, a6
+	jsr CLOSE_LIBRARY(a6)
+	rts
+	.bend  ; closeDos
+	.endsection
+	.section data, kind=data
+DosName	.byte "dos.library", 0
+EmptyArgs	.byte 0
+DefaultRoot	.byte "PROGDIR:packages", 0
+UsageText	.byte "Usage: opforge [OPTIONS] FILE|DIRECTORY", 10
+	.byte "  -i, --infile FILE     Input (directory selects main.asm; default .)", 10
+	.byte "      --cpu CPU         Optional initial target; otherwise root .cpu or default", 10
+	.byte "      --runtime-package FILE  Explicit BS38 runtime package", 10
+	.byte "      --incremental-dir DIR  Module cache directory (default build/ofm)", 10
+	.byte "      --rebuild         Rebuild cached modules", 10
+	.byte "      --reference-modules  Preserve shared module preparation", 10
+	.byte "      --capture-dir DIR  Disk scratch directory; capture RAM bounded to 1 MiB", 10
+	.byte "  -b, --bin [FILE]      Flat binary output", 10
+	.byte "      --hunk [FILE]     Source-configured Hunk output", 10
+	.byte "  -x, --hex [FILE]      Intel HEX output", 10
+	.byte "  -s, --srec [FILE]     Motorola S-record output", 10
+	.byte "  -g, --go ADDRESS      Record start address (4-8 hex digits)", 10
+	.byte "  -M, --module-path DIR Additional module search root (repeatable)", 10
+	.byte "  -I, --include-path DIR Additional include search root (repeatable)", 10
+	.byte "  -P, --package-path DIR Package directory", 10
+	.byte "  -d, --dialect NAME    Package dialect", 10
+	.byte "  -q, --quiet          Suppress module progress and build summaries", 10
+	.byte "      --Werror         Return failure if warnings occurred", 10
+	.byte "  -h, --help           This help", 10
+	.byte "  -V, --version        Build identity", 10
+	.byte "Root-file directory is the default module/include search root.", 10
+	.byte "Source .output filenames are literal; no request means validation only.", 10, 0
+VersionText	.byte "opForge native | BS38", 10, 0
+ArgumentError	.byte "opforge: invalid or unsupported arguments (see --help)", 10, 0
+InputError	.byte "opforge: invalid input; expected readable .asm file or directory with main.asm (bounded paths)", 10, 0
+TargetError	.byte "opforge: cannot select initial target from root preamble", 10, 0
+	.align 4
+	.endsection
+	.section bss, kind=bss
+	.align 4
+DosBase	.res long, 1
+CatalogPointer	.res long, 1
+Config	.res byte, app.FRAME_BYTES
+Arguments	.res byte, args.STATE_BYTES
+Root	.res byte, args.PATH_BYTES
+	.endsection
+	.endmodule

@@ -184,7 +184,10 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
     ));
     std::fs::create_dir(&path).unwrap();
     let scratch = Scratch(path);
-    let source = std::fs::read_to_string(root.join("native/motorola68000/amigaos/test-harnesses/experimental/binary_expression_records_harness.asm")).unwrap();
+    let source = std::fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/expression_records_harness.asm"),
+    )
+    .unwrap();
     let entry = scratch.0.join("entry.asm");
     std::fs::write(&entry, &source).unwrap();
     let cli = Cli::parse_from([
@@ -194,6 +197,10 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

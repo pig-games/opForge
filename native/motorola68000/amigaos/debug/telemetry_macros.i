@@ -11,7 +11,7 @@
 .ifndef OPFORGE_PROGRESS_RUNTIME_COUNTERS
 .include "telemetry_macros_noop.i"
 .else
-	.use debug.amigaos.runtime_profile as runtime_profile
+	.use opforge.debug.runtime_profile as runtime_profile
 
 TELEMETRY_VM_ENTER	.macro vm_id, program_id
 	move.w ccr, -(sp)

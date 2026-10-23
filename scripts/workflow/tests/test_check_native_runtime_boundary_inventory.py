@@ -10,27 +10,16 @@ class NativeRuntimeBoundaryInventoryTests(unittest.TestCase):
     def test_inventory_matches_all_audited_sources(self):
         self.assertEqual(validate(), [])
 
-    def test_audit_set_covers_exactly_twenty_five_modules(self):
+    def test_audit_set_covers_promoted_orchestration_packages_and_vms(self):
         self.assertEqual(len(TARGETS), 25)
-        self.assertIn("exprvm.amigaos.i64_math", TARGETS)
-        self.assertIn("opasm.amigaos.assembly_driver", TARGETS)
-        self.assertIn("opasm.amigaos.directive_router", TARGETS)
-        self.assertIn("opasm.amigaos.operand_eval", TARGETS)
-        self.assertIn("opasm.amigaos.directive_data", TARGETS)
-        self.assertIn("opasm.amigaos.directive_text", TARGETS)
-        self.assertIn("opasm.amigaos.layout", TARGETS)
-        self.assertIn("tkpkg.amigaos.service", TARGETS)
-        self.assertIn("tkpkg.amigaos.selection_service", TARGETS)
-        self.assertIn("tkpkg.amigaos.operand_runtime", TARGETS)
-        self.assertIn("tkpkg.amigaos.operand_record_service", TARGETS)
-        self.assertIn("tkpkg.amigaos.encode_service", TARGETS)
-        self.assertIn("tkpkg.amigaos.encoding_execution", TARGETS)
-        self.assertIn("tkpkg.amigaos.value_execution", TARGETS)
-        self.assertIn("tkpkg.amigaos.compact_table", TARGETS)
-        self.assertIn("tkpkg.amigaos.compact_prepare", TARGETS)
-        self.assertIn("tkpkg.amigaos.runtime_context", TARGETS)
-        self.assertIn("tkpkg.amigaos.state_service", TARGETS)
-        self.assertIn("tkpkg.amigaos.engine_context_adapter", TARGETS)
+        for module in (
+            "opforge.assembler.driver", "opforge.assembler.prepare.frontend",
+            "opforge.assembler.layout.assembly", "opforge.packages.loader",
+            "opforge.packages.validation", "opforge.vm.exvm.runtime",
+            "opforge.vm.encoding.runtime", "opforge.vm.value.runtime",
+            "opforge.vm.exprvm.i64_math", "opforge.cli.entry",
+        ):
+            self.assertIn(module, TARGETS)
 
 
 if __name__ == "__main__":

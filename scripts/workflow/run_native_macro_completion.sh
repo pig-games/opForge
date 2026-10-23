@@ -56,8 +56,9 @@ if [[ "${mode}" == "--manifest" && -n "$(git status --porcelain)" ]]; then
 fi
 
 tests=(
-  native_macro_invocation_fixture_fs_uae
-  native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection
+  compact_opcore_corpus_fs_uae
+  compact_mos_corpus_fs_uae
+  compact_motorola68000_corpus_fs_uae
 )
 test_source="crates/opforge-asm/src/tests"
 for test_name in "${tests[@]}"; do
@@ -72,7 +73,7 @@ for test_name in "${tests[@]}"; do
   output_file="$(mktemp)"
   trap 'rm -f "${output_file}"' EXIT
   printf '==> Native macro Level D completion: %s\n' "${test_name}"
-  if ! "${cargo_bin}" test -p asm "${test_name}" -- --nocapture --test-threads=1 >"${output_file}" 2>&1; then
+  if ! "${cargo_bin}" test -p asm "${test_name}" -- --ignored --nocapture --test-threads=1 >"${output_file}" 2>&1; then
     cat "${output_file}"
     echo "error: required Level D test failed: ${test_name}" >&2
     exit 1
@@ -101,7 +102,7 @@ manifest_tmp="${manifest_path}.tmp"
   printf '  "source": {"commit": "%s", "tree": "%s"},\n  "tests": [\n' "${source_commit}" "${source_tree}"
   for index in "${!tests[@]}"; do
     comma=','; [[ ${index} -eq $((${#tests[@]} - 1)) ]] && comma=''
-    printf '    {"name": "%s", "command": "cargo test -p asm %s -- --nocapture --test-threads=1", "result": "PASS"}%s\n' "${tests[${index}]}" "${tests[${index}]}" "${comma}"
+    printf '    {"name": "%s", "command": "cargo test -p asm %s -- --ignored --nocapture --test-threads=1", "result": "PASS"}%s\n' "${tests[${index}]}" "${tests[${index}]}" "${comma}"
   done
   printf '  ]\n}\n'
 } >"${manifest_tmp}"

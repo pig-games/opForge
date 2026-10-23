@@ -54,11 +54,9 @@ fn compact_hunk_forward_offset_fs_uae() {
 }
 
 fn catalog_source() -> String {
-    let module =
-        include_str!("../../../../native/motorola68000/amigaos/experimental/binary_catalog.asm");
-    let catalog =
-        include_str!("../../../../native/motorola68000/amigaos/experimental/package_catalog.i");
-    format!(".module main\n.cpu m68020\n.use experimental.amigaos.binary_catalog as lookup\n.section code,kind=code\n jsr lookup.find\n.endsection\n.section data,kind=data\n{catalog}\n.endsection\n.section bss,kind=bss\n.res byte,12\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,bss,data\n.endmodule\n{module}\n")
+    let module = include_str!("../../../../native/motorola68000/amigaos/packages/catalog.asm");
+    let catalog = include_str!("../../../../native/motorola68000/amigaos/packages/catalog.i");
+    format!(".module main\n.cpu m68020\n.use opforge.packages.catalog as lookup\n.section code,kind=code\n jsr lookup.find\n.endsection\n.section data,kind=data\n{catalog}\n.endsection\n.section bss,kind=bss\n.res byte,12\n.endsection\n.output \"build/sections.hunk\",format=hunk,sections=code,bss,data\n.endmodule\n{module}\n")
 }
 
 #[test]

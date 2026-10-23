@@ -150,6 +150,10 @@ fn native_layout_rust_oracles() {
     }
 }
 
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    fnv1a64_update(0xcbf29ce484222325, bytes)
+}
+
 #[test]
 #[ignore = "fresh native layout and comparative timing; requires configured FS-UAE"]
 fn native_layout_fs_uae() {
@@ -165,7 +169,7 @@ fn native_layout_fs_uae() {
         let build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.join("native"),
-            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &root.join("native/motorola68000/amigaos/main.asm"),
             &EmbedSelection::Targets(vec!["68020".into()]),
         )
         .unwrap();
@@ -266,8 +270,4 @@ fn native_layout_fs_uae() {
         }
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
-}
-
-fn fnv1a64(bytes: &[u8]) -> u64 {
-    fnv1a64_update(0xcbf29ce484222325, bytes)
 }

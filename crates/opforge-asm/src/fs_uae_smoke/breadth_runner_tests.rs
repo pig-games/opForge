@@ -16,7 +16,7 @@ fn package_preparation_uses_fresh_output_under_existing_scratch() {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &output,
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .expect("generate current packages under existing scratch parent");
@@ -45,7 +45,7 @@ fn native_compact_breadth_correctness() {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &scratch.0.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();
@@ -377,10 +377,7 @@ fn per_case_work_roots_isolate_inputs_absolute_outputs_and_capture() {
     assert!(script.contains(
         "C:Assign Work: OPForgeBatch:cases/case_0008\nIf WARN\nQuit 20\nEndIf\nCD Work:"
     ));
-    assert_eq!(
-        script.matches("OPForgeBatch:build/opforge_compact").count(),
-        2
-    );
+    assert_eq!(script.matches("OPForgeBatch:build/opforge").count(), 2);
 }
 
 #[test]

@@ -67,23 +67,15 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
         self.assertEqual(
             self.tests,
             (
-                "external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli",
-                "external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli",
-                "external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli",
-                "external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_rust_cli",
-                "external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli",
-                "external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_output",
-                "native_mos_forward_ref_stability_fs_uae",
-                "native_reference_opcore_syntax_expression_fs_uae",
-                "native_reference_opcore_module_macro_statement_fs_uae",
-                "native_reference_opcore_layout_output_fs_uae",
-                "native_reference_opcore_diagnostic_fs_uae",
-                "external_fs_uae_native_motorola68000_complete_reference_parity",
+                "compact_opcore_corpus_fs_uae",
+                "compact_mos_corpus_fs_uae",
+                "compact_motorola68000_corpus_fs_uae",
             ),
         )
         source = self.wrapper.read_text(encoding="utf-8")
         for foreign in ("intel8080", "motorola6800_family", "z80", "riscv"):
             self.assertNotIn(foreign, source.lower())
+        self.assertIn("--ignored", source)
         self.assertIn("--test-threads=1", source)
         self.assertIn("rg -q 'SKIP:'", source)
         self.assertIn("running 1 test", source)
@@ -115,7 +107,7 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
             "#!/usr/bin/env bash\n"
             "test_name=$4\n"
             "printf '%s\\n' \"$test_name\" >> \"$TEST_INVOCATION_LOG\"\n"
-            "if [[ $test_name == external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli ]]; then\n"
+            "if [[ $test_name == compact_opcore_corpus_fs_uae ]]; then\n"
             "  printf 'emulator crashed\\n'\n"
             "  exit 1\n"
             "fi\n"
@@ -144,7 +136,7 @@ class NativeReferenceParityCompletionTests(unittest.TestCase):
             "test_name=$4\n"
             "printf '%s\\n' \"$test_name\" >> \"$TEST_INVOCATION_LOG\"\n"
             "printf 'running 1 test\\n'\n"
-            "if [[ $test_name == external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli ]]; then\n"
+            "if [[ $test_name == compact_opcore_corpus_fs_uae ]]; then\n"
             "  printf 'test tests::%s ... SKIP: emulator configuration became unavailable\\n' \"$test_name\"\n"
             "  printf 'ok\\n'\n"
             "else\n"

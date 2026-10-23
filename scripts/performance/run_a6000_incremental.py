@@ -23,7 +23,7 @@ def guest_script(remote, marker, command, *, capture_mode="resident"):
     script = setup[:setup.index('Echo "START ')]
     for phase in PHASES:
         script += f"FailAt 10\nIf EXISTS {phase}\nDelete {phase} ALL\nEndIf\nMakeDir {phase}\n"
-        for name in ("output.hunk", "build/opforge_compact"):
+        for name in ("output.hunk", "build/opforge"):
             script += f"If EXISTS {name}\nDelete {name}\nEndIf\n"
         executable, arguments = command.split(" ", 1)
         if phase == "cold":
@@ -34,7 +34,7 @@ def guest_script(remote, marker, command, *, capture_mode="resident"):
             f"C:Date >{phase}/start.time\nFailAt 999\n"
             f"{executable} >{phase}/assembly.stdout {arguments}\n"
             f"Echo $RC >{phase}/exitcode\nC:Date >{phase}/end.time\n"
-            f"Copy build/opforge_compact {phase}/output.hunk\n"
+            f"Copy build/opforge {phase}/output.hunk\n"
             f"Echo $RC >{phase}/copy-exitcode\n"
             f'Echo "DONE {challenge}" >{phase}/done.marker\n'
         )
@@ -53,9 +53,9 @@ def incremental_counters(text):
 
 
 def inspect_result(root, files, oracle, marker, host_seconds, *,
-                   native_output_file="build/opforge_compact"):
-    if native_output_file != "build/opforge_compact":
-        raise ValueError("Incremental pair requires source-directed build/opforge_compact output")
+                   native_output_file="build/opforge"):
+    if native_output_file != "build/opforge":
+        raise ValueError("Incremental pair requires source-directed build/opforge output")
     base.verify_files(root, files)
     phases = {}
     diagnostics = []
@@ -96,8 +96,9 @@ def load_bundle(path):
     manifest, files, oracle, digest = base.load_bundle(path)
     if (manifest.get("bootstrap_defines") or manifest.get("bootstrap_package_storage") != "embedded"
             or manifest.get("output_package_storage") != "embedded"
-            or manifest.get("native_output_file") != "build/opforge_compact"):
-        raise ValueError("Incremental pair requires a release embedded source-directed m68020 bundle")
+            or manifest.get("native_output_file") != "build/opforge"
+            or manifest.get("capture_mode") != "disk"):
+        raise ValueError("Incremental pair requires a release embedded source-directed m68020 disk-capture bundle")
     digest = hashlib.sha256((PAIR_PROTOCOL + "\0" + digest).encode()).hexdigest()
     return manifest, files, oracle, digest
 

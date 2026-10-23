@@ -14,16 +14,17 @@ fn assemble(root: &Path, build: &NativePackageBuild, instrumented: bool) -> Vec<
         "opForge".into(),
         build.cli_source_path.to_string_lossy().into_owned(),
     ];
-    let mut roots: Vec<_> = fs::read_dir(root.join("native"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .collect();
-    roots.sort();
-    for path in roots {
-        args.extend(["-M".into(), path.to_string_lossy().into_owned()]);
-    }
     args.extend([
+        "-M".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
+    ]);
+    args.extend([
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
         "-I".into(),
         root.join("native/motorola68000/amigaos/debug")
             .to_string_lossy()
@@ -50,7 +51,7 @@ fn assemble(root: &Path, build: &NativePackageBuild, instrumented: bool) -> Vec<
             panic!("build measured native CLI: warnings treated as errors")
         }
     });
-    fs::read(build.output_dir.join("build/opforge_compact")).unwrap()
+    fs::read(build.output_dir.join("build/opforge")).unwrap()
 }
 
 // HUNK_HEADER reservations measure linked static segments, not allocator overhead.
@@ -131,7 +132,7 @@ fn native_package_loading_performance() {
     fs::create_dir(&scratch).unwrap();
     let _cleanup = EphemeralArtifactDir(scratch.clone());
     let registry = engine::build_default_asm_registry();
-    let template = root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm");
+    let template = root.join("native/motorola68000/amigaos/main.asm");
     let external = build_native_packages(
         &registry,
         &scratch.join("external"),

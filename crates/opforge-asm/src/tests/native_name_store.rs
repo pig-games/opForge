@@ -22,11 +22,10 @@ fn name_store_image(dir: &Path) -> (Vec<u8>, String) {
         .join("../..")
         .canonicalize()
         .unwrap();
-    let source =
-        fs::read_to_string(root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/name_store_harness.asm",
-        ))
-        .unwrap();
+    let source = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/name_store_harness.asm"),
+    )
+    .unwrap();
     let entry = dir.join("entry.asm");
     fs::write(&entry, &source).unwrap();
     let mut source_root = std::env::var_os("OPFORGE_NAME_STORE_SOURCE_ROOT")
@@ -41,7 +40,7 @@ fn name_store_image(dir: &Path) -> (Vec<u8>, String) {
         };
         let fixture = dir.join("fault-native");
         copy_tree(&source_root, &fixture);
-        let module = fixture.join("amigaos/experimental/binary_name_store.asm");
+        let module = fixture.join("amigaos/assembler/symbols/name_store.asm");
         let text = fs::read_to_string(&module).unwrap();
         let needle = format!("\tjsr memory.{call}\n");
         assert_eq!(text.matches(&needle).count(), 1, "one fault call required");
@@ -100,9 +99,9 @@ fn native_name_store_fs_uae() {
     let (image, source) = if let Some(path) = std::env::var_os("OPFORGE_NAME_STORE_IMAGE") {
         (
             fs::read(path).unwrap(),
-            fs::read_to_string(root.join(
-                "native/motorola68000/amigaos/test-harnesses/experimental/name_store_harness.asm",
-            ))
+            fs::read_to_string(
+                root.join("native/motorola68000/amigaos/tests/assembler/name_store_harness.asm"),
+            )
             .unwrap(),
         )
     } else {

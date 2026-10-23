@@ -267,7 +267,7 @@ fn compact_cli_hex_and_srec_records() {
             let build = build_native_packages(
                 &registry,
                 &dir.join("native"),
-                &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+                &root.join("native/motorola68000/amigaos/main.asm"),
                 &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
             )
             .unwrap();
@@ -383,7 +383,7 @@ fn compact_cli_hex_and_srec_records() {
                 b".module main\n.cpu 68020\n.byte $12\n.endmodule\n",
                 &format!("--cpu 68020 Work:entry.asm {flags}"),
                 OpforgeNativeCliProof::ExpectedFailureContaining(
-                    "compact CLI: invalid or unsupported arguments",
+                    "opforge: invalid or unsupported arguments",
                 ),
                 20,
             );
@@ -393,7 +393,7 @@ fn compact_cli_hex_and_srec_records() {
                 name,
                 source.as_bytes(),
                 &format!("--cpu 68020 Work:entry.asm {flags}"),
-                OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI: output failed"),
+                OpforgeNativeCliProof::ExpectedFailureContaining("opforge: output failed"),
                 20,
             );
         }
@@ -466,8 +466,8 @@ fn sparse_renderer_fixture() -> (String, Vec<Vec<u8>>) {
 const SPARSE_RENDERER_WRAPPER: &str = r#"
     .module main
     .cpu 68020
-    .use experimental.amigaos.binary_record_output as rec
-    .use experimental.amigaos.binary_output_io as io
+    .use opforge.assembler.output.records as rec
+    .use opforge.assembler.output.io as io
 OPEN_LIBRARY = -552
 CLOSE_LIBRARY = -414
     .section entry,kind=code

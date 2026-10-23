@@ -205,9 +205,7 @@ fn prepare(dir: &Path) -> Fixture {
 fn build_probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
     let input = dir.join("module_compile_probe.asm");
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_compile_probe.asm",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_compile_probe.asm"),
         &input,
     )
     .unwrap();
@@ -220,6 +218,8 @@ fn build_probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),
     ];
     if rejections {
@@ -288,11 +288,9 @@ fn export_component(root: &Path, scratch: &Path, fixture: &Fixture, image: &[u8]
             .unwrap(),
     );
     paths.insert(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_compile_probe.asm",
-        )
-        .canonicalize()
-        .unwrap(),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_compile_probe.asm")
+            .canonicalize()
+            .unwrap(),
     );
     let snapshot = paths
         .into_iter()

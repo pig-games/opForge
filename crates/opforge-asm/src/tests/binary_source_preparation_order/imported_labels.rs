@@ -132,9 +132,9 @@ fn sectioned_hunk_source(real_state_names: bool) -> String {
         // Keep the exact owner prefix length and public state-label shape.
         for (old, new) in [
             ("example.entry", "tkvm.fixture.entry"),
-            ("example.control", "tkvm.amigaos.control"),
-            ("example.state", "tkvm.amigaos.state"),
-            ("example.program", "tkvm.amigaos.demo_program"),
+            ("example.control", "opforge.vm.tkvm.control"),
+            ("example.state", "opforge.vm.tkvm.state"),
+            ("example.program", "opforge.vm.tkvm.demo_program"),
             ("program.Table", "demo_program.DemoStateEntryOffsets"),
             ("\nTable\n", "\nDemoStateEntryOffsets\n"),
             ("DEFAULT_BUDGET", "TKVM_DEFAULT_MAX_STEPS_PER_LINE"),

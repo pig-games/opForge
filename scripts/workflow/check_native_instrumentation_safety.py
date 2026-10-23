@@ -19,20 +19,8 @@ FLAG_SETTER = re.compile(r"^\s*(?:cmp|tst|add|sub|and|or)\w*(?:\.\w+)?\b", re.I)
 BRANCH = re.compile(r"^\s*b(?:eq|ne|cc|cs|lt|le|gt|ge|hi|ls|mi|pl|vc|vs)\b", re.I)
 RAW_CALL = re.compile(r"\b(?:jsr|bsr(?:\.\w+)?)\s+.*(?:debug|diag|print)", re.I)
 PROHIBITED = re.compile(r"\b(?:LastErrorBuffer|RequestBuffer|ServiceBuffer)\b", re.I)
-STANDALONE_DIAGNOSTIC_HARNESSES = {
-    "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm",
-}
-
-# Permanent negative-process proof forwards the service's actual error text.
-# This exact call is executable output, not injected runtime instrumentation.
-FUNCTIONAL_SERVICE_ERROR_HARNESS = (
-    "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
-)
-FUNCTIONAL_SERVICE_ERROR_CALL = re.compile(
-    r"^\s*bsr\.w\s+writeFailureDiagnostic\s*(?:;.*)?$", re.I
-)
 FUNCTIONAL_BYTE_WARNING_OWNER = (
-    "native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
+    "native/motorola68000/amigaos/assembler/driver_diagnostics.i"
 )
 # Warning text is part of the program's behavior. Exempt only its exact writer
 # calls inside the routine that formats those warnings.
@@ -43,28 +31,17 @@ FUNCTIONAL_BYTE_WARNING_CALL = re.compile(r"^\s*bsr\.w\s+writeDiagnostic\s*(?:;.
 def validate_text(path: str, text: str) -> list[str]:
     if "/debug/" in path:
         return []
-    standalone_diagnostic_harness = path in STANDALONE_DIAGNOSTIC_HARNESSES
     errors: list[str] = []
     lines = text.splitlines()
     in_functional_byte_warning = False
     for index, line in enumerate(lines):
         if path == FUNCTIONAL_BYTE_WARNING_OWNER and FUNCTIONAL_BYTE_WARNING_BEGIN.search(line):
             in_functional_byte_warning = True
-        # This standalone executable owns its DOS text protocol and predates the
-        # production instrumentation framework. Its DebugCli namespace is not
-        # instrumentation injected into runtime control flow. Keep the buffer,
-        # macro, and flag/branch checks active below.
-        functional_service_error_call = (
-            path == FUNCTIONAL_SERVICE_ERROR_HARNESS
-            and FUNCTIONAL_SERVICE_ERROR_CALL.fullmatch(line) is not None
-        )
         functional_byte_warning_call = (
             in_functional_byte_warning and FUNCTIONAL_BYTE_WARNING_CALL.fullmatch(line) is not None
         )
         if (
-            not standalone_diagnostic_harness
-            and not functional_service_error_call
-            and not functional_byte_warning_call
+            not functional_byte_warning_call
             and RAW_CALL.search(line)
         ):
             errors.append(f"{path}:{index + 1}: raw debug/diagnostic call is forbidden")
@@ -75,7 +52,7 @@ def validate_text(path: str, text: str) -> list[str]:
             line,
             re.I,
         )
-        if label and not standalone_diagnostic_harness:
+        if label:
             errors.append(f"{path}:{index + 1}: unknown instrumentation label `{label.group(1)}`")
         macro = re.search(r"\.?(DEBUG_(?:ASSERT|EVENT)_[A-Z0-9_]+)", line)
         if macro and macro.group(1) not in APPROVED_MACROS:

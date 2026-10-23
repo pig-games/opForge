@@ -445,32 +445,6 @@ fn compact_memo_batch() -> (Vec<u8>, Vec<u8>) {
     (input, expected)
 }
 
-struct CompactMemoOracleDir(PathBuf);
-
-impl Drop for CompactMemoOracleDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn compact_memo_live_rust_cli_oracle(source: &str) -> Vec<u8> {
-    let case_dir = create_temp_dir("native-compact-memo-cli-oracle");
-    let _case_dir_guard = CompactMemoOracleDir(case_dir.clone());
-    let input_path = case_dir.join("input.asm");
-    let bin_path = case_dir.join("oracle.bin");
-    fs::write(&input_path, source).expect("write compact-memo Rust oracle source");
-    let cli = Cli::parse_from([
-        "opForge",
-        input_path.to_string_lossy().as_ref(),
-        "--bin",
-        bin_path.to_string_lossy().as_ref(),
-        "--cpu",
-        "m6502",
-    ]);
-    run_with_cli_with_context(&cli).expect("run compact-memo live Rust CLI oracle");
-    fs::read(&bin_path).expect("read compact-memo live Rust CLI oracle")
-}
-
 #[test]
 fn native_compact_memo_live_rust_oracle() {
     // Level A/B: the package codec and RuntimeModelCore pipeline selector and
@@ -479,68 +453,4 @@ fn native_compact_memo_live_rust_oracle() {
     let (input, expected) = compact_memo_batch();
     assert!(input.len() > 4);
     assert_eq!(expected.len() % RECORD_BYTES, 0);
-}
-
-#[test]
-fn native_compact_memo_mixed_cli_live_rust_oracle() {
-    // Level A plus optional Level D: exercise a real statement mix whose NOPs
-    // cross repeated prepared-table lookups and intervening mnemonics. The Rust CLI owns
-    // the exact artifact supplied to the existing fail-closed native runner.
-    let source = "    .org $0800\n    nop\n    lda #$12\n    nop\n    bne done\n    nop\ndone\n    nop\n    rts\n";
-    let rust_oracle = compact_memo_live_rust_cli_oracle(source);
-    assert_eq!(
-        rust_oracle,
-        vec![0xea, 0xa9, 0x12, 0xea, 0xd0, 0x01, 0xea, 0xea, 0x60]
-    );
-    let package_bytes = build_hierarchy_package_from_registry(&default_registry())
-        .expect("build native compact-memo CLI package");
-    let case = crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-        name: "native-compact-memo-mixed-cli",
-        cpu_id: "m6502",
-        source: source.as_bytes(),
-        package_bytes: &package_bytes,
-        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_oracle),
-    };
-    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
-        &workspace_root(),
-        &[case],
-    )
-    .expect("native compact-memo mixed CLI proof")
-    {
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1);
-            let run = &runs[0];
-            assert!(run.success && run.protocol_completed && run.exit_code == Some(0));
-            assert_eq!(run.verified_output.as_deref(), Some(rust_oracle.as_slice()));
-        }
-    }
-}
-
-#[test]
-fn native_compact_memo_fs_uae() {
-    // Level D: one immutable dynamic batch, fresh challenged guest, explicit
-    // zero exit, and byte-exact comparison with the in-memory Rust oracle.
-    // This proves prepared-table load, invalidation, malformed-load recovery,
-    // and lookup behavior at the native request boundary.
-    let (input, expected) = compact_memo_batch();
-    match crate::fs_uae_smoke::run_compact_memo_harness_from_env(
-        &workspace_root(),
-        &input,
-        &expected,
-    )
-    .expect("native compact memo lifecycle proof")
-    {
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1);
-            let run = &runs[0];
-            assert!(
-                run.success && run.protocol_completed && run.exit_code == Some(0),
-                "compact memo harness failed: {}\n{}",
-                run.stdout,
-                run.stderr
-            );
-        }
-    }
 }

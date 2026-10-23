@@ -1,471 +1,253 @@
 # Native runtime boundary inventory
 
-This retained technical inventory describes module responsibilities, entrypoints,
-state and dependencies. It is not a future decomposition plan or a requirement to
-preserve existing modules indefinitely. Historical change narratives and extraction
-decisions are in Git history. Review actual source when using a description for
-new work; the source checks do not prove every prose statement current.
+The promoted native pipeline owns source preparation, module linking, layout and output. Shared VM executors consume package/wire contracts; they do not invoke CLI entry or assembler orchestration. The guard snapshots this current source surface so ownership changes require review and a synchronized inventory.
 
-The [inventory checker](../../scripts/workflow/check_native_runtime_boundary_inventory.py)
-records source hashes and counts and derives `.block` routines, `.use` imports,
-`.section` state and diagnostic/status/event lines. Its `--report` option prints
-that structural inventory. Relevant source changes require refreshing the checked
-inventory after reviewing their impact, not creating a plan item or approval receipt.
-This is structural evidence, not executed native parity.
+## `opforge.assembler.driver`
 
-Use the [boundary contract](native-runtime-boundary-contract-v0_1.md) for existing
-ownership constraints and the [repository workflow](../workflow/README.md) for
-scope, validation and completion. No future feature or migration is scheduled here.
+Source: `native/motorola68000/amigaos/assembler/driver.asm`
 
-## Modules
+Entry: `execute`. Routines: 22. Imports: 66. Sections: `code`, `data`, `bss`, `bss`.
 
-### `tkpkg.amigaos.state_service`
+Routines: `execute`, `readExact`, `prepare`, `prepareCliInputs`, `releaseGraph`, `openSource`, `readManifestPath`, `appendCandidate`, `closeSource`, `fileSpan`, `closeInput`, `readByte`, `lowerLine`, `appendPrepared`, `run`, `appendEmission`, `allocateOutput`, `appendReloc`, `writeOutputs`, `writeSelected`, `writeRecords`, `copy`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_state_service.asm`.
-- Public entries: `initializeActiveV1`, `resetActiveV1`, `applyDirectiveV1`,
-  `getFlagV1`, and `requirementAllowsV1`.
-- Imports/outbound dependencies: `tkpkg.amigaos.buffers`; the default-off
-  `debug.amigaos.runtime_profile` observer when runtime counters are enabled.
-- Mutable state: the selected package-program cursor and directive-table cursor;
-  bounded active key pointers, lengths, values, profile index, and program bounds
-  live in the shared package buffers.
-- Routine responsibility groups: bounded STVM decoding; scoped-owner matching;
-  active-profile default materialization; case-insensitive directive and argument
-  matching; transactional profile-mask validation; opaque key lookup; and generic
-  `key=v1+v2?diagnostic` requirement evaluation.
-- Inbound users: pipeline selection initializes the service, the assembly driver
-  resets/applies state per pass, runtime context projects opaque flags, and the
-  selector evaluates package-owned requirements.
+Imports: `opforge.assembler.symbols.lexical_store`, `opforge.assembler.modules.bindings`, `opforge.assembler.prepare.frontend`, `opforge.assembler.language.statement_execution`, `opforge.assembler.source.capture`, `opforge.assembler.source.capture_store`, `opforge.assembler.modules.configuration`, `opforge.assembler.language.conditionals`, `opforge.assembler.symbols.name_store`, `opforge.assembler.symbols.scopes`, `opforge.assembler.layout.assembly`, `opforge.assembler.layout.dependencies`, `opforge.assembler.layout.sections`, `opforge.assembler.output.hunk_image`, `opforge.assembler.output.hunk_stream`, `opforge.assembler.output.plan`, `opforge.assembler.output.io`, `opforge.assembler.output.records`, `opforge.assembler.output.spans`, `opforge.assembler.output.flat`, `opforge.assembler.prepare.metadata`, `opforge.assembler.output.metadata`, `opforge.packages.format`, `opforge.packages.loader`, `opforge.cli.progress`, `opforge.platform.files`, `opforge.platform.memory`, `opforge.assembler.source.records`, `opforge.assembler.symbols.storage`, `opforge.assembler.values.values`, `opforge.assembler.source.discovery`, `opforge.assembler.source.input_plan`, `opforge.assembler.source.line_input`, `opforge.assembler.source.declarations`, `opforge.assembler.modules.graph`, `opforge.assembler.prepare.record_order`, `opforge.assembler.prepare.record_store`, `opforge.assembler.source.record_view`, `opforge.assembler.layout.block_index`, `opforge.assembler.symbols.scope_layout`, `opforge.assembler.source.file_data`, `opforge.assembler.modules.compiler`, `opforge.assembler.modules.scope`, `opforge.assembler.modules.templates`, `opforge.assembler.modules.image`, `opforge.assembler.modules.registry`, `opforge.assembler.modules.object_store`, `opforge.assembler.modules.semantic_exports`, `opforge.assembler.modules.assembly_interface`, `opforge.assembler.modules.provider`, `opforge.assembler.modules.interface_store`, `opforge.assembler.modules.template_names`, `opforge.assembler.modules.runtime`, `opforge.assembler.modules.carrier`, `opforge.assembler.modules.admission`, `opforge.assembler.prepare.sections`, `opforge.assembler.symbols.imports`, `opforge.vm.exprvm.runtime`, `opforge.vm.prvm.abi`, `opforge.assembler.language.repeat_activation`, `opforge.assembler.language.branches`, `opforge.assembler.language.repetition`, `opforge.assembler.symbols.scalar_observations`, `opforge.assembler.layout.encoding`, `opforge.assembler.source.control`, `opforge.assembler.symbols.binding_records`.
 
-### `opasm.amigaos.assembly_driver`
+## `opforge.assembler.prepare.frontend`
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm`.
-- Public entry: `assembleSessionV1`; it builds the engine callback context and
-  runs the two-pass session.
-- Imports/outbound dependencies: callback ABI, compile values, directive router,
-  numeric-data owner, engine, events, conditional/navigation/repetition/scope/struct
-  flow modules, text encoding, tkpkg bridge, the architecture-neutral tkpkg ABI
-  and shared pipeline buffers, the CLI-owned imported-label resolver callback,
-  the default-off passive symbol/expression observer, and approved debug
-  contracts/events.
-- Mutable state: module-local pass/session request pointers, flow/repetition
-  scratch, text scratch/output state, and one bounded copy of the request-selected
-  package CPU id used to restore the same initial pipeline before each pass.
-  Layout region/section/place storage is owned by `opasm.amigaos.layout`.
-- Routine responsibility groups: pass callback orchestration; router-result
-  dispatch using retained parser statement kind, with unresolved dot statements
-  rejected before instruction selection; structural-flow state
-  transitions and explicit `.case` evaluation
-  callback; scoped-struct repeat-label qualification callback; operand/evaluation request
-  construction, including delegation of imported-label lookup without owning
-  module visibility; selector/encoding adaptation; data/text sizing and emission;
-  arbitrary package-returned instruction-size advancement; generic package
-  pipeline restoration at pass start and replay of source `.cpu` transitions
-  through `SET_PIPELINE`; complete stored directive-operand delegation; remaining
-  layout/region/section/place/pack dispatch, including bounded projection of
-  Rust Hunk section-memory aliases into the layout owner; event projection.
-- Inbound users: the CLI engine-callback adapter imports this driver; the
-  driver is the session orchestration boundary, not a package or CPU owner.
-- Reservation handling uses the driver consumers
-  `prepareResOperandsForStatement`, `readResUnitForStatement`, and
-  `evaluateResOperandSlice`. The driver checks the unit-times-count extent and
-  inclusive last address, then passes the typed result to engine-owned RES
-  storage; no per-statement table is added.
+Source: `native/motorola68000/amigaos/assembler/prepare/frontend.asm`
 
-### `opasm.amigaos.directive_router`
+Entry: `captureStatementRole`. Routines: 89. Imports: 46. Sections: `bss`, `code`, `data`, `bss`.
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_directive_router.asm`.
-- Public entry: `classifyV1`; it maps existing non-structural directive text to
-  a numeric route code.
-- Imports/outbound dependencies: the opasm engine only, for the existing
-  session-pass and current-PC callbacks used by section transitions.
-- Mutable state: none.
-- Routine responsibility groups: case-insensitive bounded directive comparison,
-  aliases for existing data directives, and numeric routing for layout-owned
-  `.pack` handling.
-- Inbound users: the assembly driver, which retains all callback orchestration,
-  traversal, and handler execution.
+Routines: `captureStatementRole`, `scratchSize`, `begin`, `beginGraph`, `copyMemberKeys`, `exportBindings`, `exportSeeds`, `beginFileDerived`, `endFileDerived`, `setLine`, `line`, `captureLine`, `replayLine`, `previewCapture`, `bindCapture`, `copyCaptureBytes`, `captureCandidates`, `captureCandidate`, `tokenizeLine`, `lowerTokens`, `writeWithHeadPolicy`, `selectHeadPolicy`, `writeTokens`, `namedFragmentCandidate`, `configureWriter`, `bodyFragmentCandidate`, `retainedFragmentBody`, `fragmentLinePlan`, `textNameBody`, `numericSuffixPlan`, `numericSuffixOverlap`, `retainedSuffixOverlap`, `fragmentSuffixOverlap`, `fragmentLine`, `initialPlan`, `bindCapturedPlan`, `physicalLineRecipe`, `sourceDescriptors`, `captureFragments`, `generatedPlan`, `relexGeneratedCall`, `expansionDepth`, `expansionCursor`, `templateRole`, `previewExpansion`, `scopeState`, `conditionalState`, `nextExpansion`, `nextTemplate`, `expandRecord`, `processRecord`, `data`, `sourceScalar`, `classifyFile`, `runFilePlan`, `fileLine`, `endFile`, `orderGraph`, `complete`, `completeBegin`, `completeLayouts`, `completeLayoutsEnd`, `completeOutputs`, `completeBindings`, `completeRecords`, `completeEnd`, `parameterBytes`, `copyParameters`, `indexBlocks`, `selectBlocks`, `activate`, `finish`, `checkLexicalSession`, `configure`, `activateControl`, `validateMacroPrograms`, `validateMemberBindings`, `updateRole`, `declarationRole`, `loopRole`, `fileRole`, `captureFile`, `bindMember`, `lookupPackage`, `bind`, `bindTextName`, `templateIdentity`, `hash`, `equal`.
 
-### `opasm.amigaos.operand_eval`
+Imports: `opforge.assembler.symbols.lexical_store`, `opforge.assembler.symbols.name_store`, `opforge.packages.format`, `opforge.assembler.layout.state`, `opforge.assembler.source.records`, `opforge.assembler.symbols.members`, `opforge.assembler.prepare.member_syntax`, `opforge.assembler.prepare.prepare`, `opforge.assembler.prepare.operand_binding`, `opforge.assembler.prepare.expression`, `opforge.assembler.prepare.data`, `opforge.assembler.prepare.metadata`, `opforge.vm.prvm.packed_metadata`, `opforge.assembler.symbols.scopes`, `opforge.assembler.symbols.scope_layout`, `opforge.assembler.symbols.binding_records`, `opforge.assembler.language.structs`, `opforge.assembler.language.conditionals`, `opforge.assembler.language.templates`, `opforge.assembler.source.capture`, `opforge.assembler.language.macro_plans`, `opforge.assembler.language.statement_heads`, `opforge.assembler.language.statement_session`, `opforge.assembler.language.statement_execution`, `opforge.assembler.language.statements`, `opforge.assembler.symbols.imports`, `opforge.assembler.modules.graph`, `opforge.assembler.layout.block_index`, `opforge.assembler.modules.bindings`, `opforge.platform.memory`, `opforge.assembler.values.values`, `opforge.assembler.values.structs`, `opforge.vm.tkvm.runtime`, `opforge.vm.tkvm.fragments`, `opforge.assembler.language.macro_fragments`, `opforge.vm.tkvm.control`, `opforge.vm.prvm.macro_runtime`, `opforge.vm.prvm.packed_file`, `opforge.assembler.language.declaration`, `opforge.vm.prvm.packed_declaration`, `opforge.vm.prvm.packed_loop`, `opforge.vm.prvm.runtime`, `opforge.vm.prvm.abi`, `opforge.vm.prvm.macro_spelling`, `opforge.assembler.language.text_names`, `opforge.vm.prvm.packed_text`.
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_operand_eval.asm`.
-- Public entries: selected-instruction request construction, textual expression
-  request construction, their evaluation-extension adapters, and bounded
-  materialization of imported aliases supplied through the callback ABI. Directive
-  requests retain those snapshots but omit instruction-shape inference.
-- Imports/outbound dependencies: callback ABI, engine request builders, and the
-  flow-scope owner's bounded active-label alias query.
-- Mutable state: a bounded evaluation-only snapshot of local, imported, and
-  qualified/global label names and values;
-  the driver still supplies its service frame and owns request-length state,
-  dispatch, diagnostics, and fallback policy.
+## `opforge.assembler.prepare.prepare`
 
-### `opasm.amigaos.directive_data`
+Source: `native/motorola68000/amigaos/assembler/prepare/prepare.asm`
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_directive_data.asm`.
-- Public entries: `sizeNumericDirectiveV1` and `emitNumericDirectiveV1`.
-- Imports/outbound dependencies: engine image append and runtime-context data
-  byte order; the driver supplies its
-  existing comma-count and statement-aware operand-resolution callbacks.
-- Mutable state: per-session callback pointers, unit-width/byte-order scratch, and a
-  four-byte packing buffer.
-- Routine responsibility groups: numeric list sizing, byte range validation,
-  package-selected byte-order packing, and image append. Missing execution
-  properties fail explicitly before emission.
+Entry: `line`. Routines: 13. Imports: 12. Sections: `code`, `bss`.
 
-### `opasm.amigaos.directive_text`
+Routines: `line`, `lineUnfolded`, `lineMode`, `copy`, `tupleTail`, `callTail`, `tuplePrepare`, `name`, `validateNameSequence`, `packageRegister`, `prepareTextDirective`, `string`, `compile`.
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_directive_text.asm`.
-- Public entries: `sizeTextDirectiveV1` and `emitTextDirectiveV1`.
+Imports: `opforge.packages.format`, `opforge.assembler.layout.state`, `opforge.assembler.source.records`, `opforge.assembler.prepare.expression`, `opforge.assembler.prepare.operand_wrappers`, `opforge.assembler.prepare.products`, `opforge.assembler.prepare.nested_operands`, `opforge.vm.prvm.packed_loop`, `opforge.vm.prvm.abi`, `opforge.vm.prvm.packed_branch`, `opforge.vm.prvm.packed_text`, `opforge.vm.prvm.macro_runtime`.
 
-### `opasm.amigaos.layout`
+## `opforge.assembler.prepare.operand_binding`
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_layout.asm`.
-- Public entries: region/section/place state transitions, bounded layout-name
-  request APIs, `alignCursorV1`, `alignPadV1`,
-  `markOutputFixupBytesNormalizedV1`, and
-  `getOutputFixupBytesNormalizedV1`.
-- Imports/outbound dependencies: the architecture-neutral engine query API and,
-  in observer builds, the default-off platform profiler.
-- Mutable state: region/section/place counters, names, bounds, cursors,
-  alignment values, placement indices, Hunk memory attributes, and scratch
-  storage; retained output fixups also own one bounded normalization flag per
-  existing 256-entry slot.
-- Routine responsibility groups: overflow-safe positive alignment,
-  power-of-two padding arithmetic, bounded layout-name copy/comparison,
-  region/section/place validation and transitions, including sequential `.pack`
-  placement through the same transition owner, word/long table-index
-  calculation, and bounded fixup normalization-state updates and queries. The
-  driver retains statement tokenization, callback dispatch, and engine/image
-  projection only, including the read-only `getListingSectionNameV1`
-  projection over the existing statement section indices and final active
-  section; it adds no layout state and does not change semantic ownership.
+Source: `native/motorola68000/amigaos/assembler/prepare/operand_binding.asm`
 
-### `tkpkg.amigaos.service`
+Entry: `line`. Routines: 18. Imports: 8. Sections: `code`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_service.asm`.
-- Public entries: `bootstrapV1` and `dispatchV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, dedicated request-lifecycle,
-  status-projection, parser-adapter, expression-service, and selection-service
-  owners; operand-record and encoding services, expression bridge, package loader,
-  pipeline, and tokenizer VM; plus the default-off runtime observer.
-  The expression service reaches pass/finalization state only through the
-  neutral `tkpkg.amigaos.runtime_context` façade. ExprVM evaluation uses the
-  compiled current contract without evaluator-version lookup or dispatch.
-- Mutable state: request/control-block pointers, output and last-error buffers,
-  and service result fields.
-- Routine responsibility groups: bootstrap/request validation; status and
-  diagnostic projection; parser route adaptation; EXVM parser-contract
-  lookup and validation; selected-envelope encoding/output construction; and the
-  retained package contract/locator helpers.
-- Inbound users: the opasm tkpkg bridge is the principal facade caller.
+Routines: `line`, `copyRecord`, `needsCandidates`, `split`, `shape`, `originalSpan`, `trialSpan`, `span`, `table`, `rowProjections`, `projections`, `projection`, `tupleLeaf`, `scalarSyntax`, `exactName`, `registerName`, `candidateNames`, `merge`.
 
-### `tkpkg.amigaos.selection_service`
+Imports: `opforge.packages.format`, `opforge.assembler.symbols.scopes`, `opforge.assembler.source.records`, `opforge.assembler.prepare.nested_operands`, `opforge.assembler.prepare.register_mask`, `opforge.assembler.prepare.expression`, `opforge.vm.prvm.abi`, `opforge.debug.runtime_profile`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm`.
-- Public entries: `selectInstructionV1`, `buildSelectedEnvelopeV1`,
-  `noOutputErrorV1`, and `tkpkgProjectBoundedRegisterV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, operand runtime, neutral
-  runtime context, the expression bridge transition boundary, the shared
-  VALUE_VM execution owner, and the default-off runtime observer.
-- Mutable state: selected request envelope and candidate traversal cursor; the
-  unchanged operand scratch state is shared through the internal selection-state
-  module. One bounded deferred-rejection text buffer is used so traversal
-  can retain the highest-priority diagnostic while preserving complete owner
-  search.
-- Routine responsibility groups: selected-request decoding; package MSEL and
-  CSEM-owner traversal; CPU-neutral CMSE-v7 scalar input projection; scoped
-  RENC/VALP program lookup and adaptation to shared execution; neutral register-list mask,
-  duplicate, and distinct-register detection; direct and indirect call-argument
-  register projection; neutral tuple identity-scale projection; candidate
-  construction; package-declared named-register comparison and signed
-  out-of-range rejection projection; EXVM parser-contract lookup without
-  ExprVM evaluator-version state; dialect-CPU-family
-  rejection precedence; selected-output diagnostic selection; and standard
-  scalar capture rendering; package-declared bounded-register projection; and
-  propagation of engine-owned label target-reference metadata into fixups.
+## `opforge.assembler.prepare.expression`
 
-### `tkpkg.amigaos.operand_runtime`
+Source: `native/motorola68000/amigaos/assembler/prepare/expression.asm`
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm`.
-- Public entry: `tkpkgMselTryBuildCandidateV1`.
-- Imports/outbound dependencies: tkpkg buffers, private selection state, neutral
-  runtime context, the expression bridge transition boundary, and the
-  default-off platform observer.
-- Mutable state: reads and writes the preserved selection-state scratch layout;
-  it does not own package selection or selected-output diagnostics.
-- Routine responsibility groups: plan-tag dispatch, operand-span normalization,
-  top-level neutral operand-list splitting, expression evaluation, and
-  candidate-envelope construction.
+Entry: `configure`. Routines: 19. Imports: 12. Sections: `code`, `bss`.
 
-### `tkpkg.amigaos.encode_service`
+Routines: `configure`, `deferCompile`, `configureBuiltin`, `isBuiltin`, `capsuleSpan`, `singleSymbol`, `bindFields`, `rawTokenEnd`, `compile`, `compileUnfolded`, `compileValue`, `compileValueUnfolded`, `compileMode`, `requiresTyped`, `compoundSymbols`, `bareTypeScalar`, `evaluate`, `evaluateWithSymbols`, `evaluateValue`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm`.
-- Public entries: `encodeInstructionV1` and `encodeSelectedInstructionV1`, plus
-  `executeNamedSemanticProgramV1` for an already selected semantic role and
-  fixup side-channel queries. The public service entries retain the legacy ABI
-  while adapting service-owned buffers and selection state into a caller-owned
-  execution context.
-- Imports/outbound dependencies: tkpkg ABI/buffers, private selection state,
-  the existing selection-service boundary, and the generic compact-table
-  boundary, numeric semantic bindings, and shared encoding-execution owner;
-  plus the default-off runtime observer.
-- Mutable state: writes the same existing package-service output buffer; it does
-  not own interpreter state, pipeline selection, package loading, or status
-  projection. A module-local execution context projects the existing buffers
-  and counters for each interpreter call, clears position-proof output, and
-  marks optional scalar target identity absent.
-- Routine responsibility groups: selected-envelope encoding, legacy
-  package-table lookup, neutral CSEM owner/program lookup, execution-context
-  preparation, compact fixed-row delegation, fixup side-channel adaptation,
-  and encoded-output construction.
+Imports: `opforge.vm.exprvm.runtime`, `opforge.assembler.prepare.fold`, `opforge.vm.exvm.runtime`, `opforge.assembler.prepare.expression_lowering`, `opforge.vm.exprvm.values_runtime`, `opforge.assembler.values.values`, `opforge.assembler.values.records`, `opforge.assembler.values.structs`, `opforge.assembler.symbols.bindings`, `opforge.platform.memory`, `opforge.assembler.source.records`, `opforge.debug.runtime_profile`.
 
-### `tkpkg.amigaos.encoding_execution`
+## `opforge.assembler.prepare.data`
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_encoding_execution.asm`.
-- Public entries: `semantic`, `normalizeFixupLength`, and `table`; `Context` is
-  the 62-byte caller-owned runtime-state contract used by each entry.
-- Imports/outbound dependencies: only the default-off runtime observer through
-  its telemetry macro include. It imports no service, assembler, package-loader,
-  or selection globals.
-- Owned mutable state: none. Callers supply bounded input records, output storage,
-  current pass/PC/branch state, and optional parallel fixup arrays in `Context`.
-  Position-proof count/target and optional exact input-target identity also live
-  in that context; there is no new global storage or inferred target identity.
-- Routine responsibility groups: canonical TABL byte/operand execution;
-  CSEM/SEMV v2/v6 encoding, v5 branch, and v4/v7 fixup interpretation;
-  width/range/endianness validation; bounded byte emission; fixup recording and
-  output-length normalization; branch-range diagnostic rendering; and bounded
-  position-proof projection for successful resolved branches or positional,
-  target-aware steps without relocation. END-only encoding programs explicitly
-  succeed with zero output. Proof and output are usable only after successful
-  execution; these mechanisms add no directive-name or CPU-specific dispatch.
-- Inbound users: the encode-service adapter and the experimental
-  binary-source encoder. The latter owns its runtime buffers while serialized
-  binary package records remain offset-only.
+Source: `native/motorola68000/amigaos/assembler/prepare/data.asm`
 
-### `tkpkg.amigaos.value_execution`
+Entry: `check`. Routines: 1. Imports: 8. Sections: `code`, `bss`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_value_execution.asm`.
-- Public entry: `execute`, the stateless VALUE_VM v1/v2 interpreter over the
-  native signed-32 scalar transport.
-- Imports/outbound dependencies: only the default-off runtime observer through
-  its telemetry macro include.
-- Mutable state: none.
-- Routine responsibility groups: literal/input selection, normalization,
-  signed/unsigned/range constraints, upper-bound-as-zero projection, exact
-  signed-i64-to-i32 validation, and malformed/constraint status projection.
-- Inbound users: scoped VALP lookup in the selection service and the
-  experimental binary-source encoder after it resolves an offset-only program
-  descriptor.
+Routines: `check`.
 
-### `tkpkg.amigaos.semantic_bindings`
+Imports: `opforge.assembler.symbols.lexical_store`, `opforge.packages.format`, `opforge.assembler.symbols.scope_layout`, `opforge.assembler.symbols.binding_records`, `opforge.assembler.symbols.imports`, `opforge.vm.prvm.abi`, `opforge.vm.prvm.macro_runtime`, `opforge.assembler.source.records`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_semantic_bindings.asm`.
-- Public entries: `reset`, `find`, `store`; no outbound dependencies.
-- Mutable state: 64 raw 12-byte descriptors plus count/alignment. Each descriptor
-  holds a numeric CMSE name ID, program version, length and package pointer.
-- Responsibility: bounded reuse of validated, owner-selected program metadata;
-  full capacity falls back to ordinary resolution. No operand values, emitted
-  bytes or source statements are retained.
-- Inbound users: encoding resolves misses; package loading and every successful
-  pipeline commit invalidate all descriptors before subsequent execution.
+## `opforge.assembler.layout.assembly`
 
-### `tkpkg.amigaos.compact_table`
+Source: `native/motorola68000/amigaos/assembler/layout/assembly.asm`
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_table.asm`.
-- Public entries: `find` and `bind`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, the existing neutral
-  scoped-owner/string helpers in the selection service, the prepared compact
-  table boundary, and the default-off runtime observer through its telemetry
-  macro include.
-- Mutable state: the active dialect/CPU/family owner indices. `bind` publishes
-  these indices only after pipeline selection succeeds; failed selection leaves
-  the previous binding intact. There is no lookup memo.
-- Routine responsibility groups: lookup against the immutable prepared CTBL,
-  bounded reconstruction of prefix-compressed strings, scope-order selection
-  among matching rows and direct prepared program lookup.
+Entry: `beginSizing`. Routines: 18. Imports: 30. Sections: `bss`, `code`.
 
-### `tkpkg.amigaos.compact_prepare`
+Routines: `beginSizing`, `advance`, `finishSizing`, `emit`, `release`, `assemble`, `execute`, `moduleEntries`, `refreshViews`, `stateRecord`, `statementSelected`, `statement`, `warnByte`, `markInstructionRelocs`, `markDataReloc`, `name`, `emitGap`, `emitBytes`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_compact_prepare.asm`.
-- Public entries: `prepare` and `reset`.
-- Imports/outbound dependencies: tkpkg buffers, the neutral chunk locator in
-  the selection service, and the default-off runtime observer through its
-  telemetry macro include.
-- Mutable state: the validated CTBL bounds and counts plus an allocated program
-  pointer directory. `reset` invalidates and frees that directory; package reload
-  prepares a replacement, and package shutdown resets it.
-- Routine responsibility groups: CTBL structural validation before publication,
-  owner/string/program/row traversal, strict row-order and index validation,
-  exact chunk-consumption checks, program-directory allocation, and transactional
-  publication or cleanup on failure. Native limits remain 16-bit program lengths
-  and row counts, and the existing string scratch capacity. UTF-8 and duplicate
-  owner/string/program-payload validation remain gaps against Rust; the existing
-  locator also treats a zero-length CTBL as absent.
+Imports: `opforge.packages.format`, `opforge.assembler.layout.session`, `opforge.assembler.values.values`, `opforge.assembler.symbols.parameters`, `opforge.assembler.layout.state`, `opforge.assembler.prepare.expression`, `opforge.vm.exprvm.runtime`, `opforge.vm.prvm.abi`, `opforge.vm.prvm.macro_runtime`, `opforge.assembler.layout.encoding`, `opforge.assembler.layout.dependencies`, `opforge.assembler.symbols.scalar_observations`, `opforge.assembler.symbols.mutable`, `opforge.assembler.symbols.constants`, `opforge.assembler.source.records`, `opforge.assembler.source.payload_bounds`, `opforge.assembler.layout.sections`, `opforge.assembler.layout.hunk_mapping`, `opforge.assembler.layout.hunk_placement`, `opforge.assembler.layout.hunk_references`, `opforge.assembler.language.repetition`, `opforge.assembler.language.branches`, `opforge.assembler.values.guards`, `opforge.assembler.language.repeat_inventory`, `opforge.assembler.language.text_execution`, `opforge.assembler.language.text`, `opforge.assembler.language.text_layout`, `opforge.assembler.language.string_provider`, `opforge.platform.memory`, `opforge.assembler.modules.records`.
 
-### `tkpkg.amigaos.operand_record_service`
+## `opforge.assembler.layout.encoding`
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm`.
-- Public entry: `executeRequestV1`; it parses one bounded neutral request,
-  resolves an opaque CPRD id by dialect/CPU/family precedence, and executes one
-  exact OPRD schema-v1 base program or schema-v2 nested-address program.
-- Imports/outbound dependencies: the tkpkg ABI and shared buffers; plus the
-  default-off runtime observer.
-- Mutable state: bounded request cursors, active-owner indices, selected-program
-  metadata, and the dedicated neutral result buffer (24-byte v1 or 40-byte v2).
-- Routine responsibility groups: little-endian bounded CPRD reading; complete
-  UTF-8, duplicate-owner/duplicate-id, and v1-v3 program-set validation before scoped
-  owner/id matching; exact program-shape and END validation; request/result
-  non-overlap enforcement; neutral register,
-  indirect/update, displacement/base, indexed/width/scale, absolute, and
-  immediate result materialization; nested base, optional base
-  displacement, optional index, indirection, and optional outer displacement
-  materialization; missing-input and malformed-data rejection.
+Source: `native/motorola68000/amigaos/assembler/layout/encoding.asm`
 
-### `tkpkg.amigaos.runtime_context`
+Entry: `encode`. Routines: 63. Imports: 17. Sections: `bss`, `code`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_runtime_context.asm`.
-- Public entries: `getAbiVersionV1`, `getPassV1`, `getAddressV1`,
-  `lookupSymbolV1`, `isSymbolTargetReferenceV1`,
-  `getSymbolStabilityTableV1`, `getSymbolTableSnapshotV1`,
-  `reportDiagnosticV1`, `getLastDiagnosticV1`, `getCpuWordSizeBytesV1`, and
-  `getCpuMaxProgramAddressV1`, and `getCpuDataByteOrderV1`.
-- Imports/outbound dependencies: engine-context adapter, state service and
-  package-owned buffers for the selected CPU execution-property cache.
-- Mutable state: private neutral diagnostic, symbol-stability, and bounded
-  copied symbol-table records; none is engine, CLI, or package-service storage.
-- Routine responsibility groups: versioned read-only context projection,
-  bounded diagnostic handoff, bounded stability snapshot materialization, and
-  read-only projection of engine-owned label target-reference metadata and
-  explicit-presence access to selected package CPU word size/address bounds/data byte order.
+Routines: `encode`, `outputFixupCount`, `outputPositionProof`, `outputPositionCancellation`, `outputRelativeField`, `outputPositionDependent`, `outputPositionRecipe`, `outputPositionRequestedCandidate`, `configureScalarCapture`, `positionInterval`, `outputGeometryProof`, `patchPosition`, `outputFixup`, `outputFixupIdentity`, `patchOutputFixup`, `splitOperands`, `knownRegister`, `findRegisterClass`, `excludedName`, `requiredForms`, `tupleClasses`, `tupleOperandClass`, `skipToken`, `tryRow`, `hasWiderRow`, `sequence`, `geometryUnproven`, `observeOperandGeometry`, `failedProjectionGeometry`, `captureScalar`, `evaluateScalar`, `evaluateOperandZero`, `storeWord`, `program`, `programId`, `project`, `projectionTargetExpression`, `projectionAtomicTarget`, `projectFixup`, `projectionExpression`, `projectionHashScalar`, `scalarIdentity`, `projectionRegister`, `projectionNamed`, `memberBase`, `projectionMemberShape`, `projectionMember`, `projectionWrappedRegister`, `projectionTupleItem`, `tupleRegisterLeaf`, `tupleProjectionSpan`, `tupleArity`, `projectionScalarExpression`, `projectionWrappedScalar`, `projectionTupleNamed`, `projectionRegisterMask`, `operandSpan`, `exactTarget`, `exactName`, `register`, `lookupRegister`, `valueProgram`, `prepareExecution`.
 
-### `tkpkg.amigaos.engine_context_adapter`
+Imports: `opforge.packages.format`, `opforge.assembler.layout.state`, `opforge.assembler.source.records`, `opforge.assembler.prepare.shapes`, `opforge.assembler.prepare.operand_wrappers`, `opforge.assembler.prepare.tuples`, `opforge.assembler.prepare.products`, `opforge.assembler.prepare.operand_paths`, `opforge.assembler.layout.dependencies`, `opforge.assembler.symbols.mutable`, `opforge.assembler.layout.hunk_references`, `opforge.assembler.prepare.register_mask`, `opforge.assembler.prepare.expression`, `opforge.vm.exprvm.runtime`, `opforge.vm.encoding.runtime`, `opforge.vm.value.runtime`, `opforge.debug.runtime_profile`.
 
-- Source:
-  `native/motorola68000/amigaos/tkpkg/tkpkg_engine_context_adapter.asm`.
-- Public entries: `getPassV1`, `getAddressV1`, `lookupSymbolV1`,
-  `isSymbolTargetReferenceV1`, `isSymbolFinalV1`, `getSymbolCountV1`,
-  `getSymbolNameV1`, and `getSymbolValueV1`.
-- Imports/outbound dependencies: documented engine getter APIs only.
-- Mutable state: none; it translates engine-owned label/pass/address state to
-  the runtime-context ABI and never exposes engine table layout.
-- Routine responsibility groups: the sole transitional engine access point for
-  future tkpkg context consumers, including exact-symbol projection of the
-  engine's PC-backed target-reference property.
+## `opforge.assembler.layout.dependencies`
 
-### `opasm.amigaos.engine`
+Source: `native/motorola68000/amigaos/assembler/layout/dependencies.asm`
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_engine.asm`.
-- Public surface: session initialization, source/statement collection,
-  callback-context construction, pass execution, labels and their PC-backed
-  target-reference property, PC/image access, and selector/expression request
-  preparation APIs.
-- Imports/outbound dependencies: event projection plus default-off progress,
-  symbol/expression, and platform-profile observers. The observers own bounded
-  private counters, not package semantics or assembly-session state.
-- Mutable state: assembly session allocation, source/statement records, label
-  table, pass/PC/image state, one byte-presence bit per bounded image address,
-  callback context, and diagnostic/event state.
-- Routine responsibility groups: session collection and lifecycle; two-pass
-  runner; label/image/PC and written-address-presence ownership; callback API;
-  request preparation.
-- Inbound users: CLI session/source/report components, assembly driver, tkpkg
-  service, and test/debug harnesses import the engine API.
+Entry: `resolve`. Routines: 16. Imports: 16. Sections: `bss`, `code`.
 
-### `tkpkg.amigaos.tokenizer_vm`
+Routines: `resolve`, `resolveLocal`, `activateLocal`, `activateGlobal`, `beginGlobal`, `release`, `observationMetadata`, `memberPlan`, `push`, `index`, `compiledLabels`, `indexBranch`, `indexLoop`, `discardViews`, `resetLayout`, `graphStorage`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_tokenizer_vm.asm`.
-- Public entry: `tkpkgTokenizerVmTokenizeLineV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers and TKVM runtime/control/
-  state.
-- Mutable state: tokenizer request/result and diagnostic/output rendering
-  scratch.
-- Routine responsibility groups: request/program parsing, TKVM invocation,
-  result validation, diagnostic construction, and bounded token rendering.
-- Inbound users: tkpkg service.
+Imports: `opforge.packages.format`, `opforge.platform.memory`, `opforge.assembler.values.values`, `opforge.assembler.symbols.bindings`, `opforge.assembler.prepare.expression`, `opforge.vm.exprvm.runtime`, `opforge.assembler.source.records`, `opforge.assembler.modules.records`, `opforge.assembler.language.repeat_inventory`, `opforge.assembler.language.repeat_dependencies`, `opforge.assembler.language.repeat_activation`, `opforge.assembler.layout.dependency_layout`, `opforge.vm.prvm.packed_branch`, `opforge.vm.prvm.packed_loop`, `opforge.vm.prvm.abi`, `opforge.debug.runtime_profile`.
 
-### `opcore.amigaos.expr_bridge`
+## `opforge.assembler.layout.sections`
 
-- Source: `native/motorola68000/amigaos/opcore/opcore_expr_bridge.asm`.
-- Public entries: `opcoreExprEvalOperandV1`, `opcoreExvmEvalOperandV1`,
-  `opcoreExvmEvalOperandWithResolverV1`, and `opcoreExvmGetLastResultHighV1`.
-- Imports/outbound dependencies: expression VM runtime and the default-off
-  symbol/expression observer and the runtime observer imported conditionally by
-  `debug/telemetry_macros.i`. The frontend uses reusable VM enter/opcode/leave
-  macros; the include owns gates and CCR/register preservation.
-- Mutable state: private ExprVM program length and
-  byte buffer, and a private four-byte last-result high word plus two-byte
-  availability marker. Parser cursor, paired literal value, and symbol index
-  are bounded call-local register state; evaluator state belongs to ExprVM.
-- Routine responsibility groups: bounded scalar grammar/literal/symbol-index
-  compilation into the current ExprVM v1 bytecode contract, optional neutral
-  lexical-context resolution before immutable-snapshot fallback, default EXVM
-  parser-program selection, and invocation of the ExprVM runtime without
-  evaluator-version parameters, state, checks, or dispatch.
-- Inbound users: the tkpkg expression service and operand runtime through the
-  evaluation entries; typed consumers read the explicit high-result accessor.
+Source: `native/motorola68000/amigaos/assembler/layout/sections.asm`
 
-### `exprvm.amigaos.i64_math`
+Entry: `scan`. Routines: 13. Imports: 2. Sections: `code`.
 
-- Source: `native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm`.
-- Public entries: `multiplyV1`, `powerV1`, and `divideModuloV1`.
-- Imports/outbound dependencies: none; the expression runtime delegates paired
-  arithmetic here using high:low register pairs.
-- Mutable state: none; `multiplyCore` is a private helper.
+Routines: `scan`, `scanHunkControl`, `slotAddress`, `beginPass`, `control`, `finishHunk`, `checkHunkPc`, `routeHunk`, `reserve`, `checkInitialized`, `checkEmit`, `finishPass`, `sectionKind`.
 
-### `prvm.amigaos.runtime`
+Imports: `opforge.packages.format`, `opforge.assembler.source.records`.
 
-- Source: `native/motorola68000/amigaos/prvm/prvm_runtime.asm`.
-- Public entry: `prvmRun68000`.
-- Imports/outbound dependencies: shared PRVM ABI, thin macro service dispatcher,
-  plus the default-off runtime
-  observer. Entry dispatch selects statement (1), initial descriptors (2) or
-  packed boundaries (3) or raw fragments (4); macro services do not allocate statement resume state.
-- Mutable state: VM token cursor, checkpoint stack, result records, emitted
-  statement fields, and expression resume state.
-- Routine responsibility groups: bytecode execution, token access,
-  checkpointing, statement-result construction, and expression suspension/
-  resume. Optional labels accept identifier or register-kind name tokens in
-  column one, with an optional adjacent colon; register spelling remains
-  tokenizer/package data. Macro
-  descriptor execution is delegated to its own bounded service.
-- Inbound users: tkpkg service through the line router. Compact preparation and
-  generated-spelling preparation use `prvm.amigaos.macro_runtime.run` directly,
-  preserving frame validation and telemetry without linking statement execution.
+## `opforge.assembler.source.control`
 
-### `prvm.amigaos.macro_runtime`
+Source: `native/motorola68000/amigaos/assembler/source/control.asm`
 
-- Source: `native/motorola68000/amigaos/prvm/prvm_macro_runtime.asm`.
-- Public entry: `run`; supports initial descriptor (2) and packed boundary (3)
-  entries, plus raw fragments (4). Each executor validates its own frame and selected program; the wrapper
-  validates pointer/available frame bytes and owns one optional VM enter/leave.
-- Imports: shared ABI, initial descriptor, packed boundary and raw fragment executors, and the
-  default-off runtime observer. No statement interpreter or resume-state storage.
-- Mutable state: none; caller buffers and executor-local staging remain bounded.
+Entry: `begin`. Routines: 16. Imports: 11. Sections: `code`, `bss`.
 
-### `tkpkg.amigaos.pipeline`
+Routines: `begin`, `line`, `classifyLoop`, `scanBody`, `evaluateHeader`, `selectIterator`, `peek`, `seek`, `fileAction`, `openIteration`, `openCollection`, `boundary`, `beginBatch`, `scalarDestination`, `appendScalar`, `finishBatch`.
 
-- Source: `native/motorola68000/amigaos/tkpkg/tkpkg_pipeline.asm`.
-- Public entry: `tkpkgPipelineSetActiveV1`.
-- Imports/outbound dependencies: tkpkg ABI/buffers, token policy, state service,
-  the compact-table owner binding, and semantic-binding invalidation.
-- Mutable state: active package selection and CPU/family/dialect/tokenizer/
-  parser locator buffers plus pending/active CPEX property values and presence.
-- Routine responsibility groups: request parsing, package hierarchy lookup,
-  CPU/family/dialect selection, tokenizer/parser locator resolution, canonical
-  CPU word-size/address-bound/byte-order staging, selection commit, and compact
-  owner binding only after a successful commit.
-- Inbound users: tkpkg service and package-facing setup paths.
+Imports: `opforge.assembler.prepare.frontend`, `opforge.packages.format`, `opforge.assembler.symbols.scopes`, `opforge.assembler.symbols.scope_layout`, `opforge.assembler.language.conditionals`, `opforge.assembler.symbols.imports`, `opforge.assembler.values.values`, `opforge.assembler.source.records`, `opforge.assembler.symbols.materialized_scope`, `opforge.vm.prvm.packed_loop`, `opforge.vm.prvm.abi`.
 
-### `opasm.amigaos.flow_text_encoding`
+## `opforge.assembler.language.statement_execution`
 
-- Source: `native/motorola68000/amigaos/opasm/opasm_flow_text_encoding.asm`.
-- Public entries: `resetStateV1`, `routeDirectiveV1`, `encodeBytesV1`, custom
-  selection, and CDEF/TDEF/EDEF definition entries.
-- Imports/outbound dependencies: none; it is session-local flow state.
-- Mutable state: active encoding, custom definition table/name/map, definition
-  cursor, and escaping scratch.
-- Routine responsibility groups: encoding lifecycle, directive routing,
-  custom-definition parsing, character mapping, escaping, and byte emission.
-- Inbound users: assembly driver.
+Source: `native/motorola68000/amigaos/assembler/language/statement_execution.asm`
+
+Entry: `begin`. Routines: 3. Imports: 11. Sections: `bss`, `code`.
+
+Routines: `begin`, `finish`, `run`.
+
+Imports: `opforge.platform.memory`, `opforge.packages.format`, `opforge.assembler.source.records`, `opforge.assembler.language.statements`, `opforge.assembler.language.statement_session`, `opforge.assembler.language.statement_call`, `opforge.assembler.language.statement_tail`, `opforge.assembler.language.statement_arguments`, `opforge.assembler.language.templates`, `opforge.assembler.prepare.tokenizer_capsule`, `opforge.vm.prvm.statement_abi`.
+
+## `opforge.assembler.modules.provider`
+
+Source: `native/motorola68000/amigaos/assembler/modules/provider.asm`
+
+Entry: `begin`. Routines: 21. Imports: 18. Sections: `code`.
+
+Routines: `begin`, `add`, `lookup`, `acquire`, `materialize`, `resolve`, `admitMemberBase`, `drain`, `hydrate`, `valueSlot`, `address`, `prepareRecord`, `ensure`, `bindMember`, `reference`, `equal`, `fold`, `owners`, `seed`, `seal`, `release`.
+
+Imports: `opforge.assembler.prepare.frontend`, `opforge.assembler.symbols.scope_layout`, `opforge.assembler.symbols.lexical_store`, `opforge.assembler.symbols.binding_records`, `opforge.assembler.modules.interface_store`, `opforge.assembler.modules.registry`, `opforge.assembler.modules.semantic_exports`, `opforge.assembler.modules.scope`, `opforge.platform.memory`, `opforge.assembler.values.values`, `opforge.assembler.layout.assembly`, `opforge.packages.format`, `opforge.assembler.layout.dependencies`, `opforge.assembler.symbols.scopes`, `opforge.assembler.modules.remap`, `opforge.assembler.modules.templates`, `opforge.assembler.modules.template_names`, `opforge.vm.exprvm.runtime`.
+
+## `opforge.assembler.output.plan`
+
+Source: `native/motorola68000/amigaos/assembler/output/plan.asm`
+
+Entry: `next`. Routines: 2. Imports: 1. Sections: `code`.
+
+Routines: `next`, `range`.
+
+Imports: `opforge.assembler.layout.sections`.
+
+## `opforge.assembler.output.hunk_image`
+
+Source: `native/motorola68000/amigaos/assembler/output/hunk_image.asm`
+
+Entry: `build`. Routines: 4. Imports: 0. Sections: `code`.
+
+Routines: `build`, `measure`, `countTarget`, `emit`.
+
+Imports: (none).
+
+## `opforge.packages.loader`
+
+Source: `native/motorola68000/amigaos/packages/loader.asm`
+
+Entry: `acquire`. Routines: 4. Imports: 4. Sections: `code`, `bss`.
+
+Routines: `acquire`, `release`, `readExact`, `close`.
+
+Imports: `opforge.packages.catalog`, `opforge.packages.format`, `opforge.packages.validation`, `opforge.platform.memory`.
+
+## `opforge.packages.validation`
+
+Source: `native/motorola68000/amigaos/packages/validation.asm`
+
+Entry: `validate`. Routines: 5. Imports: 11. Sections: `code`.
+
+Routines: `validate`, `table`, `macro`, `preparationProgram`, `span`.
+
+Imports: `opforge.packages.format`, `opforge.assembler.layout.state`, `opforge.platform.memory`, `opforge.vm.prvm.abi`, `opforge.vm.prvm.packed_branch`, `opforge.vm.prvm.packed_declaration`, `opforge.vm.prvm.packed_text`, `opforge.vm.prvm.statement_abi`, `opforge.vm.prvm.statement_compile`, `opforge.vm.prvm.statement_match`, `opforge.vm.prvm.statement_head`.
+
+## `opforge.vm.exvm.runtime`
+
+Source: `native/motorola68000/amigaos/vm/exvm/runtime.asm`
+
+Entry: `compile`. Routines: 14. Imports: 3. Sections: `code`, `data`.
+
+Routines: `compile`, `execute`, `parseSequence`, `parseStruct`, `parseIndex`, `parseMember`, `programByte`, `target`, `token`, `kindMatch`, `operatorMatch`, `allocate`, `push`, `pop`.
+
+Imports: `opforge.vm.tkvm.runtime`, `opforge.assembler.source.records`, `opforge.debug.runtime_profile`.
+
+## `opforge.vm.exprvm.runtime`
+
+Source: `native/motorola68000/amigaos/vm/exprvm/runtime.asm`
+
+Entry: `configureStringProvider`. Routines: 13. Imports: 2. Sections: `code`, `bss`.
+
+Routines: `configureStringProvider`, `evaluateString`, `evalNumeric64`, `evalCompact64`, `exprvmEvalProgramV1`, `exprvmGetLastResultHighV1`, `compareI64`, `pushD3`, `popD3`, `readU8`, `readU16`, `readI64`, `readLiteralLong`.
+
+Imports: `opforge.vm.exprvm.i64_math`, `opforge.debug.runtime_profile`.
+
+## `opforge.vm.exprvm.i64_math`
+
+Source: `native/motorola68000/amigaos/vm/exprvm/i64_math.asm`
+
+Entry: `multiplyV1`. Routines: 4. Imports: 0. Sections: `code`.
+
+Routines: `multiplyV1`, `powerV1`, `divideModuloV1`, `multiplyCore`.
+
+Imports: (none).
+
+## `opforge.vm.prvm.runtime`
+
+Source: `native/motorola68000/amigaos/vm/prvm/runtime.asm`
+
+Entry: `prvmRun68000`. Routines: 24. Imports: 3. Sections: `data`, `code`.
+
+Routines: `prvmRun68000`, `nextBoundary`, `operandSpan`, `validateResumeLocals`, `validateContinuationPc`, `currentTokenPtr`, `tokenPtrByIndex`, `readProgramTarget`, `pushCheckpoint`, `popCheckpointAddress`, `checkpointAddressForDepth`, `peekKind`, `resultRecordPtr`, `commitResultRecord`, `emitBeginStatement`, `emitLabelText`, `emitMnemonicText`, `emitDirectiveText`, `emitOperandTextSpan`, `emitOperandExprSlot`, `emitFinishLine`, `writeExpressionRequest`, `writeResumeState`, `validateExpressionResultSlot`.
+
+Imports: `opforge.vm.prvm.abi`, `opforge.vm.prvm.macro_runtime`, `opforge.debug.runtime_profile`.
+
+## `opforge.vm.tkvm.runtime`
+
+Source: `native/motorola68000/amigaos/vm/tkvm/runtime.asm`
+
+Entry: `tkvmRun68000`. Routines: 1. Imports: 4. Sections: `code`.
+
+Routines: `tkvmRun68000`.
+
+Imports: `opforge.vm.tkvm.state`, `opforge.vm.tkvm.char_predicates`, `opforge.vm.tkvm.scanner`, `opforge.debug.runtime_profile`.
+
+## `opforge.vm.encoding.runtime`
+
+Source: `native/motorola68000/amigaos/vm/encoding/runtime.asm`
+
+Entry: `semantic`. Routines: 21. Imports: 1. Sections: `data`, `code`.
+
+Routines: `semantic`, `branchProgram`, `runBranch`, `fitsSignedWidth`, `runFixup`, `observeFixupField`, `applyTransform`, `validateAlignment`, `readI64`, `requireI32`, `loadFixupInput`, `recordFixup`, `normalizeFixupLength`, `validateFixupRange`, `runEncoding`, `requireBytes`, `readU32`, `validateUnit`, `emitUnit`, `loadInput`, `table`.
+
+Imports: `opforge.debug.runtime_profile`.
+
+## `opforge.vm.value.runtime`
+
+Source: `native/motorola68000/amigaos/vm/value/runtime.asm`
+
+Entry: `execute`. Routines: 2. Imports: 1. Sections: `code`.
+
+Routines: `execute`, `readI64Le`.
+
+Imports: `opforge.debug.runtime_profile`.
+
+## `opforge.cli.entry`
+
+Source: `native/motorola68000/amigaos/cli/entry.asm`
+
+Entry: `start`. Routines: 2. Imports: 4. Sections: `code`, `data`, `bss`.
+
+Routines: `start`, `closeDos`.
+
+Imports: `opforge.assembler.driver`, `opforge.cli.arguments`, `opforge.cli.input`, `opforge.cli.target`.

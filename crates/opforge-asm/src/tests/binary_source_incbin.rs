@@ -273,7 +273,7 @@ fn native(name: &str, cpu: &str, files: &[(&str, &[u8])], roots: &[&str], expect
     }
     let image = run
         .captured_artifacts
-        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .get(&PathBuf::from("Work/build/opforge"))
         .expect("fresh native image");
     eprintln!("INCBIN case={name} cpu={cpu} source_bytes={} staged_bytes={} output_bytes={:?} start_to_done_host_seconds={:?} image_bytes={} linked_reserved_bytes={} fresh_completion=true", files[0].1.len(),files.iter().map(|(_,bytes)|bytes.len()).sum::<usize>(),expected.map(<[u8]>::len),run.start_to_done_host_seconds,image.len(),hunk::allocation(image).unwrap().total());
 }
@@ -449,7 +449,7 @@ fn full_catalog_source() -> String {
     let build = crate::native_package_build::build_native_packages(
         &default_registry(),
         &scratch.0.join("catalog"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &crate::native_package_build::EmbedSelection::Targets(vec!["m68020".into()]),
     )
     .unwrap();
@@ -619,10 +619,9 @@ fn binary_incbin_layout_contract() {
         (0x87, 0, 1, 2)
     );
     let root = workspace_root();
-    let source = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/experimental/binary_source.asm"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/assembler/source/records.asm"))
+            .unwrap();
     assert!(source.contains("TOKEN_BINARY_BYTES = $87"));
     assert!(source.contains("BINARY_BYTES_HEADER_BYTES = BinaryBytesToken.Payload"));
 }

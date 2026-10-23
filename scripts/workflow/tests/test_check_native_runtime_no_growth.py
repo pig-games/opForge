@@ -18,7 +18,6 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.root = Path(self.tempdir.name)
         (self.root / "scripts/workflow").mkdir(parents=True)
-        (self.root / "native/motorola68000/amigaos/tkpkg").mkdir(parents=True)
 
     def tearDown(self):
         self.tempdir.cleanup()
@@ -43,72 +42,63 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
         baseline = load_baseline(BASELINE)
         self.assertEqual(len(baseline.hotspot_blocks), 4)
         self.assertIn(
-            "native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm",
+            "native/motorola68000/amigaos/assembler/driver.asm",
             baseline.hotspot_blocks,
         )
         self.assertIn(
-            "native/motorola68000/amigaos/exprvm/exprvm_i64_math.asm",
+            "native/motorola68000/amigaos/vm/exprvm/i64_math.asm",
             baseline.hotspot_blocks,
         )
         self.assertEqual(validate(), [])
 
     def test_new_private_hotspot_routine_fails(self):
-        hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
+        hotspot = "native/motorola68000/amigaos/assembler/prepare/hotspot.asm"
         baseline = self.baseline(hotspot, ("existingV1",))
         self.write(
             hotspot,
-            ".module opasm.hotspot\nexistingV1 .block\nnewSemanticRoutine .block\n",
+            ".module opforge.assembler.prepare.hotspot\nexistingV1 .block\nnewSemanticRoutine .block\n",
         )
         errors = validate(self.root, baseline)
         self.assertTrue(any("newSemanticRoutine" in error for error in errors))
         self.assertTrue(any("@opforge-role" in error for error in errors))
 
     def test_declared_hotspot_delegation_is_allowed(self):
-        hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
+        hotspot = "native/motorola68000/amigaos/assembler/prepare/hotspot.asm"
         baseline = self.baseline(hotspot, ("existingV1",))
         self.write(
             hotspot,
-            ".module opasm.hotspot\nexistingV1 .block\n"
-            "; @opforge-owner: opasm.owner\n"
+            ".module opforge.assembler.prepare.hotspot\nexistingV1 .block\n"
+            "; @opforge-owner: opforge.assembler.prepare.owner\n"
             "; @opforge-role: delegation\n"
             "delegateV1 .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
 
     def test_declared_hotspot_facade_is_allowed(self):
-        hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
+        hotspot = "native/motorola68000/amigaos/assembler/prepare/hotspot.asm"
         baseline = self.baseline(hotspot, ("existingV1",))
         self.write(
             hotspot,
-            ".module opasm.hotspot\nexistingV1 .block\n"
-            "; @opforge-owner: opasm.owner\n"
+            ".module opforge.assembler.prepare.hotspot\nexistingV1 .block\n"
+            "; @opforge-owner: opforge.assembler.prepare.owner\n"
             "; @opforge-role: facade\n"
             "facadeV1 .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
 
-    def test_tkpkg_direct_engine_mutable_state_access_fails(self):
+    def test_native_test_modules_are_not_production_hotspots(self):
         baseline = self.baseline()
         self.write(
-            "native/motorola68000/amigaos/tkpkg/bad.asm",
-            "\tmove.l OpasmEngineLabelValueTable, d0\n",
-        )
-        errors = validate(self.root, baseline)
-        self.assertTrue(any("direct tkpkg access" in error for error in errors))
-
-    def test_tkpkg_comments_and_strings_do_not_count_as_state_access(self):
-        baseline = self.baseline()
-        self.write(
-            "native/motorola68000/amigaos/tkpkg/comment.asm",
-            '; OpasmEngineLabelValueTable\n\tdc.b "OpasmEngineLabelValueTable",0\n',
+            "native/motorola68000/amigaos/tests/prepare/probe.asm",
+            ".module opforge.tests.prepare.probe\nrun .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
 
     def test_new_semantic_module_requires_owner(self):
         baseline = self.baseline()
         self.write(
-            "native/motorola68000/amigaos/opasm/new_owner.asm",
-            ".module opasm.new_owner\nrunV1 .block\n",
+            "native/motorola68000/amigaos/assembler/prepare/new_owner.asm",
+            ".module opforge.assembler.prepare.new_owner\nrunV1 .block\n",
         )
         errors = validate(self.root, baseline)
         self.assertTrue(any("missing @opforge-owner" in error for error in errors))
@@ -116,21 +106,21 @@ class NativeRuntimeNoGrowthTests(unittest.TestCase):
     def test_new_semantic_module_with_owner_is_allowed_without_slice(self):
         baseline = self.baseline()
         self.write(
-            "native/motorola68000/amigaos/opasm/new_owner.asm",
-            "; @opforge-owner: opasm.new_owner\n"
-            ".module opasm.new_owner\nrunV1 .block\n",
+            "native/motorola68000/amigaos/assembler/prepare/new_owner.asm",
+            "; @opforge-owner: opforge.assembler.prepare.new_owner\n"
+            ".module opforge.assembler.prepare.new_owner\nrunV1 .block\n",
         )
         self.assertEqual(validate(self.root, baseline), [])
 
     def test_hotspot_invalid_role_fails(self):
-        hotspot = "native/motorola68000/amigaos/opasm/hotspot.asm"
+        hotspot = "native/motorola68000/amigaos/assembler/prepare/hotspot.asm"
         baseline = self.baseline(hotspot)
         self.write(
             hotspot,
-            "; @opforge-owner: opasm.owner\n"
+            "; @opforge-owner: opforge.assembler.prepare.owner\n"
             "; @opforge-role: implementation\n"
-            ".module opasm.hotspot\n"
-            "; @opforge-owner: opasm.owner\n"
+            ".module opforge.assembler.prepare.hotspot\n"
+            "; @opforge-owner: opforge.assembler.prepare.owner\n"
             "; @opforge-role: implementation\n"
             "newRoutine .block\n",
         )

@@ -5,15 +5,15 @@ pub(super) fn cases() -> Vec<PrivateCase> {
     [
         (
             "private-binding-char-predicates",
-            "tkvm.amigaos.char_predicates",
+            "opforge.vm.tkvm.char_predicates",
             "tkvmIsWhitespace",
-            include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_char_predicates.asm"),
+            include_str!("../../../../native/motorola68000/amigaos/vm/tkvm/char_predicates.asm"),
         ),
         (
             "private-binding-text-names",
-            "experimental.amigaos.binary_text_names",
+            "opforge.assembler.language.text_names",
             "normalize",
-            include_str!("../../../../native/motorola68000/amigaos/experimental/binary_text_names.asm"),
+            include_str!("../../../../native/motorola68000/amigaos/assembler/language/text_names.asm"),
         ),
     ]
     .into_iter()
@@ -109,11 +109,11 @@ fn record(source: &str, name: &str) -> String {
 
 fn exvm_case() -> PrivateCase {
     const SOURCE: &str =
-        include_str!("../../../../native/motorola68000/amigaos/experimental/binary_source.asm");
-    const ABI: &str = include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_abi.asm");
+        include_str!("../../../../native/motorola68000/amigaos/assembler/source/records.asm");
+    const ABI: &str = include_str!("../../../../native/motorola68000/amigaos/vm/prvm/abi.asm");
     const TOKENS: &str =
-        include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
-    let mut source_abi = String::from(".module experimental.amigaos.binary_source\n.pub\n");
+        include_str!("../../../../native/motorola68000/amigaos/vm/tkvm/runtime.asm");
+    let mut source_abi = String::from(".module opforge.assembler.source.records\n.pub\n");
     for name in [
         "PRVM_TOKEN_KIND_WIDE_NUMBER",
         "PRVM_NUMBER_BYTES",
@@ -141,7 +141,7 @@ fn exvm_case() -> PrivateCase {
     source_abi.push_str(&declaration(SOURCE, "NAME_TOKEN_BYTES"));
     source_abi.push('\n');
     source_abi.push_str(".endmodule\n");
-    let mut tokens_abi = String::from(".module tkvm.amigaos.runtime\n.pub\n");
+    let mut tokens_abi = String::from(".module opforge.vm.tkvm.runtime\n.pub\n");
     for line in TOKENS.lines().filter(|line| line.starts_with("TK_KIND_")) {
         tokens_abi.push_str(line);
         tokens_abi.push('\n');
@@ -151,8 +151,8 @@ fn exvm_case() -> PrivateCase {
         name: "private-binding-exvm-producer",
         accepted_modules: 3,
         files: vec![
-            ("entry.asm", format!(".module main\n.cpu 68020\n.use experimental.amigaos.binary_exvm as worker\n.section code,kind=code\n.long worker.compile\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
-            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/experimental/binary_exvm.asm").into()),
+            ("entry.asm", format!(".module main\n.cpu 68020\n.use opforge.vm.exvm.runtime as worker\n.section code,kind=code\n.long worker.compile\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
+            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/vm/exvm/runtime.asm").into()),
             ("library/source.asm", source_abi),
             ("library/tokens.asm", tokens_abi),
             ("library/lazy_work.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_work.i").into()),
@@ -180,9 +180,9 @@ fn macro_descriptors_case() -> PrivateCase {
         name: "private-binding-macro-descriptors",
         accepted_modules: 2,
         files: vec![
-            ("entry.asm", format!(".module main\n.cpu 68020\n.use prvm.amigaos.macro_descriptors as worker\n.section code,kind=code\n.long worker.run\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
-            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_macro_descriptors.asm").into()),
-            ("library/abi.asm", include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_abi.asm").into()),
+            ("entry.asm", format!(".module main\n.cpu 68020\n.use opforge.vm.prvm.macro_descriptors as worker\n.section code,kind=code\n.long worker.run\n.endsection\n.section data,kind=data\n.word $1122\n.endsection\n{PRIVATE_OUTPUTS}")),
+            ("library/provider.asm", include_str!("../../../../native/motorola68000/amigaos/vm/prvm/macro_descriptors.asm").into()),
+            ("library/abi.asm", include_str!("../../../../native/motorola68000/amigaos/vm/prvm/abi.asm").into()),
             ("library/lazy_work.i", include_str!("../../../../native/motorola68000/amigaos/debug/lazy_work.i").into()),
             ("library/telemetry_macros.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros.i").into()),
             ("library/telemetry_macros_noop.i", include_str!("../../../../native/motorola68000/amigaos/debug/telemetry_macros_noop.i").into()),

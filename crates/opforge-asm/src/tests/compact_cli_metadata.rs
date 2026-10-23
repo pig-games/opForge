@@ -343,7 +343,7 @@ fn negative_cases() -> Vec<NegativeMetadataCase> {
         ),
         None,
     );
-    late.diagnostic = "compact CLI: output failed";
+    late.diagnostic = "opforge: output failed";
     result.push(late);
     result.extend(blocks::negative_cases());
     result
@@ -454,7 +454,7 @@ fn compact_cli_inline_source_metadata() {
         let build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.join("native"),
-            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &root.join("native/motorola68000/amigaos/main.asm"),
             &EmbedSelection::Targets(vec!["68020".into()]),
         )
         .unwrap();
@@ -637,7 +637,7 @@ fn compact_cli_inline_source_metadata() {
                 &source("", "Work:", false),
                 "--go 1234",
                 None,
-                OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI:"),
+                OpforgeNativeCliProof::ExpectedFailureContaining("opforge:"),
                 20,
                 None,
             );

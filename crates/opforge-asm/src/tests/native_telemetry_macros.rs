@@ -12,6 +12,7 @@ pub(crate) fn telemetry_fixture_files() -> Vec<(&'static str, Vec<u8>)> {
         "binding_telemetry_noop.i",
         "capture_telemetry.i",
         "capture_telemetry_noop.i",
+        "capture_lifetime.i",
         "hotspot_telemetry.i",
         "hotspot_telemetry_noop.i",
     ]
@@ -52,7 +53,7 @@ fn runtime_telemetry_source(with_stub: bool, with_sites: bool) -> String {
     let mut stub = String::new();
     if with_stub {
         stub.push_str(
-            ".module debug.amigaos.runtime_profile\n.cpu 68020\n.pub\n\
+            ".module opforge.debug.runtime_profile\n.cpu 68020\n.pub\n\
              compactPrepare = 1\ncompactLookup = 2\n\
              .section code, kind=code\n",
         );
@@ -121,7 +122,7 @@ fn assemble_runtime_telemetry_case(label: &str, source: &str, defines: &[String]
 fn memory_telemetry_source(with_stub: bool, with_sites: bool) -> String {
     let stub = if with_stub {
         r#"
-.module debug.amigaos.memory_profile
+.module opforge.debug.memory_profile
 .cpu 68020
 .section code, kind=code
 .pub
@@ -269,11 +270,14 @@ fn assemble_memory_telemetry_case(label: &str, source: &str, defines: &[String])
         && source.contains("binding_telemetry.i");
     let owned_source = if enabled_diagnostic {
         let diagnostic = fs::read_to_string(
-            root.join("native/motorola68000/amigaos/debug/opforge_binding_diagnostic.asm"),
+            root.join("native/motorola68000/amigaos/debug/binding_diagnostic.asm"),
         )
         .expect("read bounded binding diagnostic owner");
         let body = source.trim_end().strip_suffix(".end").unwrap_or(source);
-        format!("{body}\n{diagnostic}\n.end\n")
+        let memory =
+            fs::read_to_string(root.join("native/motorola68000/amigaos/platform/memory.asm"))
+                .expect("read diagnostic memory block contract");
+        format!("{body}\n{diagnostic}\n{memory}\n.end\n")
     } else {
         source.to_string()
     };
@@ -502,7 +506,7 @@ SectionWords .word 5, 2, 4
 .endif
 .output "build/memory-telemetry-test", format=bin, sections=code
 .endmodule
-.module debug.amigaos.memory_profile
+.module opforge.debug.memory_profile
 .cpu 68020
 .pub
 .section code, kind=code

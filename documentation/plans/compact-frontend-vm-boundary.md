@@ -855,7 +855,7 @@ the referenced VM sources.
 
 References: [portable token contract](../../crates/opforge-vm/src/portable_contract.rs),
 [Rust tokenizer helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs),
-[native scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm), and [package
+[native scanner](../../native/motorola68000/amigaos/vm/tkvm/scanner.asm), and [package
 generation](../../crates/opforge-vm/src/builder.rs).
 
 ### Ternary expression selection
@@ -939,11 +939,11 @@ times using the RHS low-u32 count, and returns a zero-extended u32.
 | Area | Current owner | Boundary to preserve |
 | --- | --- | --- |
 | Portable token contract | [portable contract](../../crates/opforge-vm/src/portable_contract.rs) and [Rust scanner helpers](../../crates/opforge-vm/src/tokenizer_runtime_utils.rs) | Token identity and optional number metadata. |
-| Native tokenization | [TKVM scanner](../../native/motorola68000/amigaos/tkvm/tkvm_scanner.asm) and [program builder](../../crates/opforge-vm/src/builder.rs) | Package-owned lexical classification and normalization policy. |
-| Native frontend and preparation | [frontend](../../native/motorola68000/amigaos/experimental/binary_frontend.asm), [preparation](../../native/motorola68000/amigaos/experimental/binary_prepare.asm), [writer](../../native/motorola68000/amigaos/experimental/binary_source.asm) | Token use, identity binding, recipe selection and packed-source output. |
-| Macro fragments and descriptors | [templates](../../native/motorola68000/amigaos/experimental/binary_templates.asm), [macro plans](../../native/motorola68000/amigaos/experimental/binary_macro_plans.asm), and PRVM package producers | Offset-only descriptors, lexical hygiene and selected string/argument recipes. |
-| Bounded product nodes | [products](../../native/motorola68000/amigaos/experimental/binary_products.asm) and tuple preparation | Numeric node framing; scalar identity proof through ExprVM, with target choices in package projections. |
-| Expression parsing and execution | [native expression compiler](../../native/motorola68000/amigaos/experimental/binary_expression.asm) and shared ExprVM | Shared EXVM owns syntax; scalar/typed lowering emits bounded ExprVM programs. |
+| Native tokenization | [TKVM scanner](../../native/motorola68000/amigaos/vm/tkvm/scanner.asm) and [program builder](../../crates/opforge-vm/src/builder.rs) | Package-owned lexical classification and normalization policy. |
+| Native frontend and preparation | [frontend](../../native/motorola68000/amigaos/assembler/prepare/frontend.asm), [preparation](../../native/motorola68000/amigaos/assembler/prepare/prepare.asm), [writer](../../native/motorola68000/amigaos/assembler/source/records.asm) | Token use, identity binding, recipe selection and packed-source output. |
+| Macro fragments and descriptors | [templates](../../native/motorola68000/amigaos/assembler/language/templates.asm), [macro plans](../../native/motorola68000/amigaos/assembler/language/macro_plans.asm), and PRVM package producers | Offset-only descriptors, lexical hygiene and selected string/argument recipes. |
+| Bounded product nodes | [products](../../native/motorola68000/amigaos/assembler/prepare/products.asm) and tuple preparation | Numeric node framing; scalar identity proof through ExprVM, with target choices in package projections. |
+| Expression parsing and execution | [native expression compiler](../../native/motorola68000/amigaos/assembler/prepare/expression.asm) and shared ExprVM | Shared EXVM owns syntax; scalar/typed lowering emits bounded ExprVM programs. |
 
 These are responsibility references, not an exhaustive source or instruction
 audit. CPU/family semantics stay in package definitions and their specialized

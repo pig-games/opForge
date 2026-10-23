@@ -246,11 +246,10 @@ fn assemble(input: &[u8]) -> (Scratch, Vec<u8>, String) {
     std::fs::create_dir(&path).unwrap();
     let scratch = Scratch(path);
     std::fs::write(scratch.0.join("flat-output-fixture.bin"), input).unwrap();
-    let source =
-        std::fs::read_to_string(repo.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/flat_output_harness.asm",
-        ))
-        .unwrap();
+    let source = std::fs::read_to_string(
+        repo.join("native/motorola68000/amigaos/tests/assembler/flat_output_harness.asm"),
+    )
+    .unwrap();
     let entry = scratch.0.join("entry.asm");
     std::fs::write(&entry, &source).unwrap();
     let cli = Cli::parse_from([
@@ -260,6 +259,10 @@ fn assemble(input: &[u8]) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         repo.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        repo.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

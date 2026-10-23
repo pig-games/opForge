@@ -554,7 +554,7 @@ fn run_compact_corpus(audit: &CorpusAudit, cases: Vec<Case>) {
     let build = build_native_packages(
         &registry,
         &scratch.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();

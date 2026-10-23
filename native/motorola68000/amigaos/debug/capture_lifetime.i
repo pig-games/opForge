@@ -1,7 +1,7 @@
 ; Missing the experiment gate emits no code/import/storage. Operands must not
 ; depend on SP; macros snapshot register operands before argument assignment.
 .ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT
-	.use debug.amigaos.capture_lifetime as capture_life
+	.use opforge.debug.capture_lifetime as capture_life
 .endif
 CAPTURE_LIFE_CLEAR	.macro
 .ifdef OPFORGE_CAPTURE_LIFETIME_AUDIT

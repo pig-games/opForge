@@ -190,8 +190,8 @@ pointers for `call_mode = 0` are `source_ptr`, `token_ptr` when `token_count >
 
 All other values are entry-boundary violations. Statement entry 1 continues to
 reject macro descriptor programs; entries 2, 3 and 4 do not accept expression resumes.
-Shared frame/status/result definitions are owned by `prvm.amigaos.abi`;
-statement resume internals remain owned by `prvm.amigaos.runtime`. Macro entries
+Shared frame/status/result definitions are owned by `opforge.vm.prvm.abi`;
+statement resume internals remain owned by `opforge.vm.prvm.runtime`. Macro entries
 require source/program/result pointers and do not require statement diagnostics,
 resume or expression slots. Entry 3 additionally requires zero token pointer/count.
 
@@ -534,7 +534,7 @@ slot metadata are required for Rust PRVM v2 parity.
 
 ## Experimental macro descriptor entry
 
-Compact clients can call `prvm.amigaos.macro_runtime.run` directly with A0/D0
+Compact clients can call `opforge.vm.prvm.macro_runtime.run` directly with A0/D0
 and the register contract above. It accepts only entries 2, 3 and 4, validates the
 request pointer and available frame size, then delegates all program/request
 validation to the selected executor. The general `prvmRun68000` entry delegates

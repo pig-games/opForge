@@ -145,23 +145,16 @@ Embedding documentation:
 - [`crates/opforge-vm`](crates/opforge-vm): VM/runtime/package support
 - [`crates/opforge-cli`](crates/opforge-cli): command-line frontend
 - [`crates/opforge-ffi`](crates/opforge-ffi): C-facing ABI layer
-- [`native`](native): opForge-built native deliverables that run on opForge
-  targets, including the 68020 AmigaOS native CLI implementation. Its current
-  6502/65C02 parity subset accepts repeatable `-D/--define NAME[=VALUE]` and
-  consumes `.ifdef`/`.ifndef` branch selection before statement dispatch. The
-  subset also renders root `.output`, `.mapfile`, and `.exportsections`
-  artifacts after final section placement; AmigaDOS paths use native volume
-  and directory semantics rather than Unix path rules. Root `.meta` block and
-  inline forms also select Rust-equivalent 6502-family BIN, listing, and HEX
-  artifacts. The experimental native option `--capture-dir DIR` uses an existing
-  disk directory to bound capture payload RAM to 1 MiB; resident storage remains
-  the default. Metadata and other assembler memory are outside that limit. See
-  the [storage measurements and limits](documentation/plans/native-lazy-preparation.md).
-  The native CLI reuses timestamp-valid module objects in `build/ofm` by default;
-  use `--rebuild` to force fresh assembly or `--incremental-dir DIR` to choose the
-  cache location. It reports module assembly/reuse and elapsed times; `-q` or
-  `--quiet` suppresses progress. Discovery/configuration and final linking still execute. See
-  the [module-cache behavior and limits](documentation/plans/native-module-interfaces.md).
+- [`native`](native): native deliverables, including the promoted 68020 AmigaOS
+  assembler at `native/motorola68000/amigaos/main.asm`. The native frontend,
+  package-backed VM, CLI, output, platform and debug code live under
+  `native/motorola68000/amigaos/`. The root entry defaults to `.cpu 68020`, uses
+  an external-only package catalog, and writes the Hunk executable to
+  `build/opforge`. Build a deployment bundle with the
+  [`build_native_packages` example](crates/opforge-asm/examples/build_native_packages.rs);
+  non-embedded target packages ship under `packages/`. The Rust CLI remains unchanged. Native language and
+  CPU-family parity work is ongoing; see the [completion status](documentation/plans/native-runtime-reset.md)
+  and [native build and run guide](native/README.md).
 
 ## Development Shortcuts
 

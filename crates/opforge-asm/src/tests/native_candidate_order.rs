@@ -65,7 +65,7 @@ failed
  movem.l (sp)+,d2-d7/a2-a6
  rts
  .bend ; start
- .include "source_candidate_order.i"
+ .include "candidate_order.i"
 .endsection
 .section data,kind=data
 ReturnCode .long 20
@@ -107,7 +107,7 @@ Written .res long,1
         "opforge".to_owned(),
         path.to_string_lossy().into_owned(),
         "-I".to_owned(),
-        root.join("native/motorola68000/amigaos/experimental")
+        root.join("native/motorola68000/amigaos/assembler/source")
             .to_string_lossy()
             .into_owned(),
     ]);

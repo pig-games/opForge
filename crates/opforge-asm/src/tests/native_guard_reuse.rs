@@ -14,12 +14,12 @@ impl Drop for Scratch {
 fn harness_source() -> String {
     r#".module guard_reuse_probe
 .cpu 68020
-.use experimental.amigaos.binary_guard_values as guards
-.use experimental.amigaos.binary_memory as memory
-.use experimental.amigaos.binary_package as pkg
-.use opasm.amigaos.binary_expression as expression
-.use prvm.amigaos.abi as abi
-.use exprvm.amigaos.runtime as runtime
+.use opforge.assembler.values.guards as guards
+.use opforge.platform.memory as memory
+.use opforge.packages.format as pkg
+.use opforge.assembler.prepare.expression as expression
+.use opforge.vm.prvm.abi as abi
+.use opforge.vm.exprvm.runtime as runtime
 EXEC_OPEN_LIBRARY = -552
 EXEC_CLOSE_LIBRARY = -414
 DOS_OPEN = -30
@@ -233,6 +233,10 @@ fn assemble(root: &Path, scratch: &Path) -> Vec<u8> {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

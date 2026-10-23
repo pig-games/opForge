@@ -61,7 +61,7 @@ the current framework, not a mandate for a repository-wide instrumentation rewri
 `PACKING_WRITE_END`, `PACKING_COUNT` and `PACKING_STORED` calls. They require
 `OPFORGE_LAZY_AUDIT`, `OPFORGE_LAZY_WORK` and `OPFORGE_MACRO_PACKING_AUDIT`;
 missing any gate emits no calls or observer import. The bounded scalar state
-belongs to `debug.amigaos.lazy_work`: 2,049 owner rows, 32 nested writer frames,
+belongs to `opforge.debug.lazy_work`: 2,049 owner rows, 32 nested writer frames,
 148,224 bytes in total. It does not alter production records or retain pointers.
 All four APIs preserve D0–D7/A0–A6, CCR and SP. SP-relative macro operands are
 outside their contract. `packingGetState` returns A0 only for the component probe.
@@ -100,7 +100,7 @@ rows and are superseded; do not mix old producers with the current decoder.
 `debug/memory_telemetry.i` supplies `MEMORY_ALLOC`, `MEMORY_FREE`, `MEMORY_PHASE`,
 `MEMORY_LAYOUT`, `MEMORY_WORK`, `MEMORY_CLOCK`, `MEMORY_STAGE`, `MEMORY_FAILURE` and terminal `MEMORY_SAVE`. Both `OPFORGE_DEBUG_CONTRACTS` and
 `OPFORGE_MEMORY_TELEMETRY` are required; missing either gate emits no calls, imports
-or storage. These macros and the dedicated `debug.amigaos.memory_profile` owner
+or storage. These macros and the dedicated `opforge.debug.memory_profile` owner
 preserve registers/CCR, never use request/output/error buffers, and keep a bounded
 2280-byte record. The terminal export writes that record separately as `Work:memory.bin`;
 a missing/partial record fails the host accounting check. Ordinary release builds
@@ -160,7 +160,7 @@ The hot probes add substantial overhead: use counts to identify repeated work an
 separate release runs to judge performance. Previous telemetry schemas have no
 compatibility decoder.
 
-The compact CLI can additionally enable `OPFORGE_PREPARATION_PROGRESS` together
+The native CLI can additionally enable `OPFORGE_PREPARATION_PROGRESS` together
 with both memory-telemetry gates. `MEMORY_PROGRESS` then writes a fixed-length
 line to captured guest stdout at source-file boundaries and preparation/assembly
 transitions. Each line contains a phase code, source ordinal, source line,
@@ -217,12 +217,11 @@ normal terminal result owns completion. The fixed progress-line format and MEMD
 schema are unchanged. Decode one captured run with:
 
 ```sh
-python3 scripts/performance/decode_native_progress.py --assembly-progress-text capture.txt
+python3 scripts/performance/decode_assembly_work.py --assembly-progress-text capture.txt
 ```
 
 The JSON `assembly_work` field exposes
-`scheduled_source_sweeps` and `selected_record_visits`. A binary OFPR record can
-also be supplied to retain its independent completion validation.
+`scheduled_source_sweeps` and `selected_record_visits`.
 
 `SelectionPosition` is a separate 12-byte owner snapshot of the last attempted
 numeric package row: u32 `Priority`, `Recipe`, and `Projection`. Its type, storage
@@ -248,7 +247,7 @@ balanced preservation sequence; it does not execute the guest or establish parit
 
 The completion diagnostic in
 [`binding_telemetry.i`](../../native/motorola68000/amigaos/debug/binding_telemetry.i)
-and [`debug.amigaos.binding_diagnostic`](../../native/motorola68000/amigaos/debug/opforge_binding_diagnostic.asm)
+and [`opforge.debug.binding_diagnostic`](../../native/motorola68000/amigaos/debug/binding_diagnostic.asm)
 uses the same three gates. Only scopes, imports and the compact app include its
 macros. The dedicated owner retains a 308-byte primary snapshot, three optional
 308-byte correlation snapshots, and a twelve-byte pending check (1244 bytes).
@@ -419,7 +418,7 @@ Version/CPU/Stack/Avail observations accompany constrained guest measurements.
 
 ## Bounded capture ownership accounting
 
-`debug/capture_telemetry.i` and `debug.amigaos.capture_profile` add a separate
+`debug/capture_telemetry.i` and `opforge.debug.capture_profile` add a separate
 272-byte observer for the compact source-capture path. Calls, imports and owner
 storage require `OPFORGE_DEBUG_CONTRACTS`, `OPFORGE_MEMORY_TELEMETRY`, and
 `OPFORGE_CAPTURE_TELEMETRY`. Terminal reporting additionally requires
@@ -520,7 +519,7 @@ release timing. Existing completion and fresh-run parity evidence remains
 independently required.
 
 The capture decoder defaults to the current 56-byte header. For a frozen export,
-pass `--capture-source /absolute/bootstrap/src/experimental/binary_capture.asm`
+pass `--capture-source /absolute/bootstrap/src/assembler/source/capture.asm`
 to derive the header width from that executable's validated source. Repeat
 `--capture-define NAME` for its configured symbol-presence guards; for example,
 `OPFORGE_LAZY_AUDIT` plus `OPFORGE_LAZY_WORK` selects the 60-byte audit header.
@@ -814,72 +813,9 @@ later tokenizer, parser, selector, encoder, or output boundary.
 expand to zero bytes. A layout-sensitive NOP mode is intentionally deferred
 until a concrete need exists.
 
-## Bounded assembly progress bridge
+## Native CLI record output
 
-`opasm.amigaos.progress` is a diagnostic bridge for diagnosing long
-native assembly runs. It is linked into the production composition only when
-`OPFORGE_DEBUG_CONTRACTS` is defined; its module and call sites emit zero bytes
-in an ordinary release build.
-
-The module owns one 128-byte memory record and two private tick words. Passive
-updates preserve D0-D7/A0-A6, CCR, and stack depth and never write production
-request, VM, image, diagnostic, or output storage. The CLI samples AmigaDOS
-`DateStamp` only at coarse phase, optional heartbeat, and terminal boundaries.
-Statement visits perform bounded memory updates but no clock, console, or file
-operation.
-
-The work-counter option adds a separately gated 128-byte `OFWM` companion with
-`OPFORGE_PROGRESS_WORK_COUNTERS`. It is correlated to `OFPR` by run ID and
-counts statement visits by pass mode, layout rounds/reasons, flow direction and
-span, retained statement classifications, and convergence/final image bytes.
-Every group saturates and sets a defined overflow bit. The companion's code,
-call sites, and storage emit nothing in release or progress-only builds.
-
-The symbol/expression-counter option adds a separately gated 256-byte `OFSE` companion with
-`OPFORGE_PROGRESS_SYMBOL_EXPR_COUNTERS`. Aggregate mode counts
-exact/scoped/imported/final-component lookup calls and outcomes, expression
-request/parse/compile/bind/evaluate outcomes, and lookup/request phase identity.
-`OPFORGE_PROGRESS_SYMBOL_EXPR_DETAIL` adds actual candidates, compared byte
-positions, a bounded exact-probe histogram, and maximum chain depth. Detailed
-mode owns one private fixed 512-byte scratch table; aggregate mode has no such
-storage and leaves every detailed field zero.
-
-The `OFSE` module observes existing lookup and expression boundaries. It never
-changes lookup order, ambiguity, diagnostics, source position, expression
-results, hash chains, or callbacks. Its passive routines preserve D0-D7,
-A0-A6, CCR, and stack depth; its record-pointer getter returns A0 as its sole
-documented ABI output. Scoped and imported counters retain their logical class
-while nested exact/final comparisons remain attributed to their actual owner.
-Release, progress-only and work-counter-only builds emit none of the
-symbol/expression-counter code or storage.
-
-The runtime-counter option adds a separately gated 192-byte `OFVE` companion with
-`OPFORGE_PROGRESS_RUNTIME_COUNTERS`. It counts only provisional CPU-neutral
-TKVM/PRVM/EXVM/ExprVM and program invocations/opcodes, coarse service entries,
-selector candidates, encoder program rows, and marginal phase totals. Fixed
-four-entry private stacks restore enclosing VM/program and service contexts for
-nested executor, selection/value, and encoding/branch/fixup calls. Every passive
-routine preserves D0-D7/A0-A6, CCR, and stack depth; every counter saturates with a visible bit;
-there is no per-opcode identity, PC, address, timing, event I/O, VM rewrite, or
-target-semantic decision. Release and earlier counter-only builds emit none of
-the runtime-counter imports, calls, code, or storage.
-
-Heartbeat and graceful diagnostic abort are separately default-off. Builds may
-set `OPFORGE_PROGRESS_HEARTBEAT_QUANTUM` or
-`OPFORGE_PROGRESS_ABORT_VISITS`; reaching the latter follows the normal failure
-path and seals an explicitly incomplete record. A heartbeat writes the existing
-bounded structured-event buffer and may be dropped when it is full. The memory
-record remains authoritative.
-
-The complete binary schema, decoder command, flag meanings, proof boundary, and
-current combined frontend phase are documented in
-[`opforge-native-progress-record-v1.md`](../performance/opforge-native-progress-record-v1.md).
-An active or incomplete record is localization evidence only and cannot satisfy
-native parity proof.
-
-## Experimental compact CLI record output
-
-The compact CLI has one optional explicit artifact request: `-x`/`--hex
+The native CLI has one optional explicit artifact request: `-x`/`--hex
 [FILE]` or `-s`/`--srec [FILE]` selects Intel HEX or Motorola S-record output;
 `-g`/`--go ADDRESS` supplies a 4–8 digit hexadecimal start address. The
 record writers operate on flat addressable output and reject Hunk record
@@ -896,6 +832,4 @@ in the existing bounded progress line. The reusable gated
 are absent from ordinary builds. Listing and source metadata are later slices.
 Byte counts describe rendered chunks returned to transport, not completed
 device writes when an output operation fails.
-These behaviors are provisional. They do not establish performance or parity;
-see the [native progress record](../performance/opforge-native-progress-record-v1.md)
-for the instrumentation contract.
+These behaviors do not establish complete output parity or a performance claim.

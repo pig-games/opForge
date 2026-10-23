@@ -250,26 +250,23 @@ pub(crate) fn assemble_cli_with_defines(
         "opForge".to_string(),
         build.cli_source_path.to_string_lossy().into_owned(),
     ];
-    let mut roots: Vec<_> = fs::read_dir(root.join("native"))
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .collect();
-    roots.sort();
-    for path in roots {
-        argv.extend(["-M".into(), path.to_string_lossy().into_owned()]);
-    }
+    argv.extend([
+        "-M".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
+    ]);
     argv.extend([
         "-I".into(),
         root.join("native/motorola68000/amigaos/debug")
             .to_string_lossy()
             .into_owned(),
     ]);
-    // Test harnesses include the shared build configuration from their sibling
-    // experimental owner; declare that include root without relaxing containment.
+    // Generated overlays resolve cross-directory native includes through the
+    // explicitly declared composition root.
     argv.extend([
         "-I".into(),
-        root.join("native/motorola68000/amigaos/experimental")
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
     ]);
@@ -282,19 +279,19 @@ pub(crate) fn assemble_cli_with_defines(
     run_with_validated_cli_with_context(&cli, &config).unwrap_or_else(|error| match error {
         cli_core::CliRunError::Assembler { error, .. } => {
             panic!(
-                "assemble current compact CLI: {}; diagnostics: {:?}",
+                "assemble current opforge: {}; diagnostics: {:?}",
                 error.error(),
                 error.diagnostics()
             )
         }
         cli_core::CliRunError::Workflow { error, .. } => {
-            panic!("assemble current compact CLI: {error}")
+            panic!("assemble current opforge: {error}")
         }
         cli_core::CliRunError::WarningsAsErrors { .. } => {
-            panic!("assemble current compact CLI: warnings treated as errors")
+            panic!("assemble current opforge: warnings treated as errors")
         }
     });
-    fs::read(build.output_dir.join("build/opforge_compact")).unwrap()
+    fs::read(build.output_dir.join("build/opforge")).unwrap()
 }
 
 #[test]
@@ -319,7 +316,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
     let build = build_native_packages(
         &registry,
         &scratch.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();
@@ -409,16 +406,23 @@ fn compact_cli_input_defaults_and_argument_integration() {
         (
             "help-success",
             "--help",
-            "Usage: opforge_compact [OPTIONS] FILE|DIRECTORY",
+            "Usage: opforge [OPTIONS] FILE|DIRECTORY",
         ),
-        ("version-success", "-V", "opForge compact native | BS38"),
+        ("version-success", "-V", "opForge native | BS38"),
     ] {
         run(
             name,
             b"",
             command,
             &[],
-            OpforgeNativeCliProof::SuccessfulExitContaining(text),
+            if name == "version-success" {
+                OpforgeNativeCliProof::ExactStdoutLines {
+                    prefix: "",
+                    rust_oracle: b"opForge native | BS38",
+                }
+            } else {
+                OpforgeNativeCliProof::SuccessfulExitContaining(text)
+            },
             0,
         );
     }
@@ -455,7 +459,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
             command,
             &files,
             OpforgeNativeCliProof::ExpectedFailureContaining(
-                "compact CLI: invalid or unsupported arguments",
+                "opforge: invalid or unsupported arguments",
             ),
             20,
         );
@@ -473,7 +477,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
         "",
         &current_files,
         OpforgeNativeCliProof::ExpectedFailureContaining(
-            "compact CLI: initial target requires --cpu or --runtime-package",
+            "opforge: initial target requires --cpu or --runtime-package",
         ),
         20,
     );
@@ -486,7 +490,7 @@ fn compact_cli_input_defaults_and_argument_integration() {
         CURRENT_TREE[0].1,
         "--cpu 68020 Work:input.txt --bin Work:output.bin",
         &invalid_files,
-        OpforgeNativeCliProof::ExpectedFailureContaining("compact CLI: invalid input"),
+        OpforgeNativeCliProof::ExpectedFailureContaining("opforge: invalid input"),
         20,
     );
     assert!(attempted > 0, "CLI input selector must match a real case");

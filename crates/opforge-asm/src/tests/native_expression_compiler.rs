@@ -20,7 +20,7 @@ struct Case {
 }
 
 fn tk_constants() -> BTreeMap<String, u8> {
-    let source = include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
+    let source = include_str!("../../../../native/motorola68000/amigaos/vm/tkvm/runtime.asm");
     source
         .lines()
         .filter_map(|line| {
@@ -348,7 +348,7 @@ fn scalar_tree(expr: &Expr) -> bool {
 // Opcode/unary values are shared. Native binary IDs retain the existing evaluator
 // representation and are read from its named constants, rather than Rust IDs.
 fn native_constant(name: &str) -> u8 {
-    include_str!("../../../../native/motorola68000/amigaos/exprvm/exprvm_runtime.asm")
+    include_str!("../../../../native/motorola68000/amigaos/vm/exprvm/runtime.asm")
         .lines()
         .find_map(|line| {
             let (key, value) = line.split_once('=')?;
@@ -1013,11 +1013,10 @@ fn assemble(root: &Path, input: &[u8]) -> (Scratch, Vec<u8>, String) {
     std::fs::create_dir(&path).unwrap();
     let scratch = Scratch(path);
     std::fs::write(scratch.0.join("binary-exvm-cases.bin"), input).unwrap();
-    let source =
-        std::fs::read_to_string(root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/binary_exvm_harness.asm",
-        ))
-        .unwrap();
+    let source = std::fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/exvm_harness.asm"),
+    )
+    .unwrap();
     let entry = scratch.0.join("entry.asm");
     std::fs::write(&entry, &source).unwrap();
     let cli = Cli::parse_from([
@@ -1027,6 +1026,10 @@ fn assemble(root: &Path, input: &[u8]) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

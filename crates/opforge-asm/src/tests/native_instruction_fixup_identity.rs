@@ -304,8 +304,12 @@ fn prepare(dir: &Path) -> Vec<u8> {
 }
 
 fn build_probe(root: &Path, dir: &Path) -> Vec<u8> {
-    let input = dir.join("instruction_fixup_identity_probe.asm");
-    fs::copy(root.join("native/motorola68000/amigaos/test-harnesses/experimental/instruction_fixup_identity_probe.asm"), &input).unwrap();
+    let input = dir.join("fixup_identity_probe.asm");
+    fs::copy(
+        root.join("native/motorola68000/amigaos/tests/assembler/fixup_identity_probe.asm"),
+        &input,
+    )
+    .unwrap();
     let native = root.join("native/motorola68000/amigaos");
     let cli = Cli::parse_from([
         "opforge".to_owned(),
@@ -313,6 +317,8 @@ fn build_probe(root: &Path, dir: &Path) -> Vec<u8> {
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),
     ]);
     let mut config = validate_cli(&cli).unwrap();
@@ -349,20 +355,20 @@ fn native_module_carrier_host_assembles() {
         &input,
         r#" .module tests.amigaos.carrier_host
  .cpu 68020
- .use experimental.amigaos.binary_module_carrier as carrier
- .use experimental.amigaos.binary_module_image as image
- .use experimental.amigaos.binary_module_records as records
- .use experimental.amigaos.binary_memory as memory
- .use experimental.amigaos.binary_source as source
- .use experimental.amigaos.binary_sections as sections
- .use experimental.amigaos.binary_block_index as blockIndex
- .use experimental.amigaos.binary_scope_layout as carrierScope
- .use experimental.amigaos.binary_scopes as carrierScopes
- .use experimental.amigaos.binary_lexical_store as carrierLexical
- .use experimental.amigaos.binary_modules as carrierModules
- .use experimental.amigaos.binary_imports as carrierImports
- .use experimental.amigaos.binary_graph as carrierGraph
- .use experimental.amigaos.binary_values as carrierValues
+ .use opforge.assembler.modules.carrier as carrier
+ .use opforge.assembler.modules.image as image
+ .use opforge.assembler.modules.records as records
+ .use opforge.platform.memory as memory
+ .use opforge.assembler.source.records as source
+ .use opforge.assembler.layout.sections as sections
+ .use opforge.assembler.layout.block_index as blockIndex
+ .use opforge.assembler.symbols.scope_layout as carrierScope
+ .use opforge.assembler.symbols.scopes as carrierScopes
+ .use opforge.assembler.symbols.lexical_store as carrierLexical
+ .use opforge.assembler.modules.bindings as carrierModules
+ .use opforge.assembler.symbols.imports as carrierImports
+ .use opforge.assembler.modules.graph as carrierGraph
+ .use opforge.assembler.values.values as carrierValues
  .section entry, kind=code
  .pub
 start .block
@@ -386,6 +392,8 @@ start .block
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),
     ]);
     let mut config = validate_cli(&cli).unwrap();

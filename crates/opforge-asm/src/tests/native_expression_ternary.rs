@@ -37,7 +37,7 @@ fn native_expression_ternary_runtime_contract() {
     // 68020 execution or final CLI bytes.
     let runtime = normalize_tkpkg_fragment(
         &fs::read_to_string(
-            workspace_root().join("native/motorola68000/amigaos/exprvm/exprvm_runtime.asm"),
+            workspace_root().join("native/motorola68000/amigaos/vm/exprvm/runtime.asm"),
         )
         .expect("read native ExprVM runtime"),
     );
@@ -58,41 +58,4 @@ fn native_expression_ternary_runtime_contract() {
             "BRA.W applyBinaryDone",
         ]
     ));
-}
-
-#[test]
-fn native_expression_ternary_fs_uae() {
-    // Proof level D. This proves all five complete ternary cases execute in the
-    // real native CLI and match live Rust bytes. It does not prove unary
-    // operators within ternary arms.
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let _guard = LOCK
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .expect("ternary FS-UAE lock poisoned");
-    let root = workspace_root();
-    let package = item6_mos_package_bytes();
-    let case = crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-        name: "expression-ternary",
-        cpu_id: "65c02",
-        source: TERNARY_SOURCE,
-        package_bytes: package.as_slice(),
-        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_ternary_bytes()),
-    };
-    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(&root, &[case])
-        .expect("ternary FS-UAE helper")
-    {
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1);
-            let run = &runs[0];
-            assert!(
-                run.success,
-                "native ternary fixture failed\nstdout:\n{}\nstderr:\n{}",
-                run.stdout, run.stderr
-            );
-            let native = verified_fs_uae_output(run);
-            assert_eq!(native, rust_ternary_bytes(), "native ternary bytes differ");
-        }
-    }
 }

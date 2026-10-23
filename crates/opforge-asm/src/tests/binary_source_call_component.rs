@@ -76,7 +76,7 @@ fn source(output_bytes: usize) -> String {
     format!(
         r#".module prepare_probe
 .cpu 68020
-.use experimental.amigaos.binary_prepare as prepare
+.use opforge.assembler.prepare.prepare as prepare
 EXEC_OPEN_LIBRARY = -552
 EXEC_CLOSE_LIBRARY = -414
 DOS_OPEN = -30
@@ -179,6 +179,10 @@ fn assemble_source(
             .to_string_lossy()
             .into_owned(),
         "-I".into(),
+        root.join("native/motorola68000/amigaos")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
         root.join("native/motorola68000/amigaos/debug")
             .to_string_lossy()
             .into_owned(),
@@ -228,8 +232,8 @@ frontendDone
 "#;
     source(output_bytes)
         .replace(
-            ".use experimental.amigaos.binary_prepare as prepare",
-            ".use experimental.amigaos.binary_frontend as frontend",
+            ".use opforge.assembler.prepare.prepare as prepare",
+            ".use opforge.assembler.prepare.frontend as frontend",
         )
         .replace(
             " lea Record,a0\n lea Output+4,a1\n lea Payload,a2\n jsr prepare.line\n move.l d0,Output\n",
@@ -251,8 +255,8 @@ frontendDone
 fn dependency_failure_source(package: &[u8]) -> String {
     frontend_source(package, 16)
         .replace(
-            ".use experimental.amigaos.binary_frontend as frontend",
-            ".use experimental.amigaos.binary_frontend as frontend\n.use experimental.amigaos.binary_scope_layout as scope",
+            ".use opforge.assembler.prepare.frontend as frontend",
+            ".use opforge.assembler.prepare.frontend as frontend\n.use opforge.assembler.symbols.scope_layout as scope",
         )
         .replace(
             " move.l #CallLine,frontend.Frame.Source(a0)",

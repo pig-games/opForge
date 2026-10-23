@@ -6,7 +6,7 @@ use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use vm::runtime_model_core::RuntimeModelCore;
 
 const REAL: &str =
-    include_str!("../../../../native/motorola68000/amigaos/experimental/binary_text_names.asm");
+    include_str!("../../../../native/motorola68000/amigaos/assembler/language/text_names.asm");
 const SYNTHETIC: &str = r#".module shared
 .cpu 68020
 .section code,kind=code
@@ -151,14 +151,15 @@ fn prepare(dir: &Path, body: &str) -> Fixture {
 }
 
 fn probe(root: &Path, dir: &Path, rejections: bool) -> Vec<u8> {
-    let source =
-        fs::read_to_string(root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_shared_probe.asm",
-        ))
-        .unwrap();
+    let source = fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/module_shared_probe.asm"),
+    )
+    .unwrap();
     let native = root.join("native/motorola68000/amigaos");
     let mut args = vec![
         "-M".into(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.to_string_lossy().into_owned(),
         "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),

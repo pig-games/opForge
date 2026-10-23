@@ -571,7 +571,7 @@ fn compact_cli_cpu(
     );
     let image = runs[0]
         .captured_artifacts
-        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .get(&PathBuf::from("Work/build/opforge"))
         .expect("fresh compact CLI Hunk");
     let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
     assert!(allocation.total() < 2 * 1024 * 1024);

@@ -105,7 +105,7 @@ def prepare_cases(args):
         raise ValueError("Frozen staged input digest mismatch")
     package_file = manifest.get("runtime_package_file", "p.bin")
     package = (args.release_bundle / package_file).read_bytes()
-    asset = f"src/experimental/packages/{package_file}"
+    asset = f"src/packages/{package_file}"
     if frozen.get(asset) != package:
         raise ValueError("Frozen package asset must equal the current release package")
     if manifest.get("bootstrap_package_storage") != "embedded" or manifest.get("output_package_storage") != "embedded":

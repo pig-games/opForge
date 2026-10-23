@@ -10,7 +10,7 @@
 .ifndef OPFORGE_PREPARATION_PROGRESS
 .include "binding_telemetry_noop.i"
 .else
-	.use debug.amigaos.binding_diagnostic as binding_diagnostic
+	.use opforge.debug.binding_diagnostic as binding_diagnostic
 BINDING_DIAGNOSTIC_CLEAR	.macro
 	jsr binding_diagnostic.clear
 .endmacro

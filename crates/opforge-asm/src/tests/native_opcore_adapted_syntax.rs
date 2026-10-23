@@ -139,71 +139,7 @@ fn native_opcore_additive_mos_fixture_artifacts_match_live_rust_cli() {
     }
 }
 
-fn run_adapted_fixture_fs_uae(name: &str) {
-    // Proof level D. This proves one complete additive source runs through the
-    // real Amiga-native CLI and produces the same emitted bytes as the live
-    // Rust authority. Each source has a separate test so a timeout or crash in
-    // one cannot suppress execution or invalidate the result of another. It
-    // does not prove equivalence of replaced CPU-specific instruction effects
-    // or any on-hold non-MOS family scope.
-    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
-    let _guard = LOCK
-        .get_or_init(|| std::sync::Mutex::new(()))
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let root = workspace_root();
-    let package = item6_mos_package_bytes();
-    assert!(
-        adapted_fixture_cases()
-            .into_iter()
-            .any(|(fixture_name, _)| fixture_name == name),
-        "unknown adapted fixture {name}"
-    );
-    let path = root.join(ADAPTED_FIXTURE_DIR).join(format!("{name}.asm"));
-    let source = fs::read(&path).expect("read additive MOS source");
-    let text = std::str::from_utf8(&source).expect("additive MOS source UTF-8");
-    let mut lines = vec![".cpu 65c02"];
-    lines.extend(text.lines());
-    let (entries, diagnostics) = assemble_source_entries_with_runtime_mode(&lines, true)
-        .unwrap_or_else(|err| panic!("Rust authority failed for {name}: {err}"));
-    assert!(
-        diagnostics.is_empty(),
-        "Rust authority diagnostics for {name}: {diagnostics:?}"
-    );
-    let rust_bytes = entries
-        .into_iter()
-        .map(|(_, byte)| byte)
-        .collect::<Vec<_>>();
-    let case = crate::fs_uae_smoke::OpforgeNativeCliMosFixtureCase {
-        name,
-        cpu_id: "65c02",
-        source: source.as_slice(),
-        package_bytes: package.as_slice(),
-        proof: crate::fs_uae_smoke::OpforgeNativeCliMosProof::ExactRustBytes(&rust_bytes),
-    };
 
-    match crate::fs_uae_smoke::run_opforge_native_cli_mos_fixture_outputs_from_env(
-        &root,
-        std::slice::from_ref(&case),
-    )
-    .unwrap_or_else(|err| panic!("adapted {name} FS-UAE helper: {err}"))
-    {
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => {
-            eprintln!("SKIP: {reason}");
-        }
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1, "one native run for adapted {name}");
-            let run = &runs[0];
-            assert!(
-                run.success,
-                "native additive source {name} failed\nstdout:\n{}\nstderr:\n{}",
-                run.stdout, run.stderr
-            );
-            let native = verified_fs_uae_output(run);
-            assert_eq!(native, rust_bytes, "native bytes differ for {name}");
-        }
-    }
-}
 
 #[test]
 fn native_opcore_adapted_expr_syntax_fs_uae() {

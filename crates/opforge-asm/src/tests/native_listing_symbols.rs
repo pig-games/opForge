@@ -93,16 +93,6 @@ fn native_listing_symbols_live_rust_canonical_footer_and_addresses() {
 }
 
 #[test]
-fn native_listing_symbols_representative_fs_uae() {
-    run_listing_symbol_case("listing-symbols-representative", REPRESENTATIVE_SOURCE);
-}
-
-#[test]
-fn native_listing_symbols_placed_addresses_fs_uae() {
-    run_listing_symbol_case("listing-symbols-placed-addresses", PLACED_ADDRESS_SOURCE);
-}
-
-#[test]
 fn native_listing_symbols_leading_underscore_live_rust_oracle() {
     // Level A: actual Rust accepts the complete retained source. Native
     // preprocessing and artifact parity require the separate Level D case.
@@ -114,70 +104,6 @@ fn native_listing_symbols_leading_underscore_live_rust_oracle() {
         "main._private_name_longer_than_fifteen", "1000", "prv", "lbl"
     );
     assert!(listing.lines().any(|line| line == expected));
-}
-
-#[test]
-fn native_listing_symbols_leading_underscore_fs_uae() {
-    // Level D: reuse the exact previously rejected source, never a reduced
-    // or renamed substitute. The helper compares whole BIN and listing bytes.
-    run_listing_symbol_case(
-        "listing-symbols-leading-underscore",
-        LEADING_UNDERSCORE_SOURCE,
-    );
-}
-
-fn run_listing_symbol_case(name: &'static str, source: &'static [u8]) {
-    // Level D: each complete source has its own live Rust oracle and fresh guest.
-    let _guard = fs_uae_native_cli_smoke_lock()
-        .lock()
-        .expect("recovering native CLI coordinator");
-    let root = workspace_root();
-    let oracle = build_listing_symbol_oracle(name, source);
-    let package =
-        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
-            .expect("read shipped package");
-    let expected = [
-        crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
-            relative_path: "Work/build/symbols.bin",
-            rust_oracle: &oracle.bin,
-        },
-        crate::fs_uae_smoke::OpforgeNativeCliExpectedArtifact {
-            relative_path: "Work/build/symbols.lst",
-            rust_oracle: &oracle.listing,
-        },
-    ];
-    let case = crate::fs_uae_smoke::OpforgeNativeCliParityCase {
-        name,
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: Some(source),
-        command_template: Some(
-            "{input} --bin {guest_work_dir}build/symbols.bin --list {guest_work_dir}build/symbols.lst --cpu 68020 --opasm-package {package}",
-        ),
-        package_mode: crate::fs_uae_smoke::OpforgeNativeCliPackageMode::Explicit(&package),
-        extra_guest_files: &[],
-        proof: crate::fs_uae_smoke::OpforgeNativeCliProof::ExactArtifacts(&expected),
-    };
-    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &[case])
-        .expect("listing-symbol FS-UAE helper")
-    {
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP: {reason}"),
-        crate::fs_uae_smoke::FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1);
-            let run = &runs[0];
-            assert!(run.protocol_completed);
-            assert!(run.success);
-            assert_eq!(run.exit_code, Some(0));
-            assert_eq!(
-                captured_fs_uae_artifact(run, "Work/build/symbols.bin"),
-                oracle.bin
-            );
-            assert_eq!(
-                captured_fs_uae_artifact(run, "Work/build/symbols.lst"),
-                oracle.listing
-            );
-        }
-    }
 }
 
 struct ListingSymbolOracle {

@@ -1,8 +1,7 @@
 //! Caller-owned raw-block budgets, independent of source/package semantics.
 use super::*;
 
-const HARNESS: &str =
-    "native/motorola68000/amigaos/test-harnesses/experimental/binary_memory_budget_harness.asm";
+const HARNESS: &str = "native/motorola68000/amigaos/tests/assembler/memory_budget_harness.asm";
 
 #[test]
 fn native_memory_budget_harness_assembles() {

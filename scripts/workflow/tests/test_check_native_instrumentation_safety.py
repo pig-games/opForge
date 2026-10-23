@@ -24,37 +24,20 @@ class InstrumentationSafetyTests(unittest.TestCase):
 
     def test_debug_framework_module_is_approved(self):
         self.assertEqual(
-            validate_text("native/motorola68000/amigaos/debug/debug_events.asm", "jsr debugWrite"),
+            validate_text("native/motorola68000/amigaos/debug/events.asm", "jsr debugWrite"),
             [],
         )
 
-    def test_standalone_tkpkg_diagnostic_harness_owns_its_text_protocol(self):
-        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
-        self.assertEqual(validate_text(path, "bsr.w tkpkgDebugCliPutStrV1"), [])
-        self.assertTrue(
-            validate_text(
-                "native/motorola68000/amigaos/tkpkg/runtime.asm",
-                "bsr.w tkpkgDebugCliPutStrV1",
-            )
-        )
-
-    def test_scalar_negative_process_output_exception_is_exact(self):
-        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_expression_i64_harness.asm"
-        call = "bsr.w writeFailureDiagnostic"
-        self.assertEqual(validate_text(path, call), [])
-        self.assertTrue(validate_text("native/motorola68000/amigaos/tkpkg/runtime.asm", call))
-        for text in (
-            "bsr.w debugPrint",
-            "bsr.w writeFailureDiagnosticOther",
-            "temporaryDebug .block",
-            "move.l d0, RequestBuffer ; debug",
-            ".DEBUG_ASSERT_UNKNOWN CONTRACT_X",
+    def test_retired_harness_has_no_instrumentation_exemption(self):
+        for path in (
+            "native/motorola68000/amigaos/tests/tkpkg/debug_cli.asm",
+            "native/motorola68000/amigaos/tests/tkpkg/expression_i64_harness.asm",
         ):
-            with self.subTest(text=text):
-                self.assertTrue(validate_text(path, text))
+            self.assertTrue(validate_text(path, "bsr.w writeFailureDiagnostic"))
+            self.assertTrue(validate_text(path, "bsr.w debugPrint"))
 
     def test_functional_byte_warning_output_exception_is_owner_and_routine_scoped(self):
-        owner = "native/motorola68000/amigaos/experimental/binary_app_diagnostics.i"
+        owner = "native/motorola68000/amigaos/assembler/driver_diagnostics.i"
         routine = "reportByteWarning .block\n" + "\n".join(
             ["bsr.w writeDiagnostic"] * 4
         ) + "\n.bend ; reportByteWarning"
@@ -70,7 +53,7 @@ class InstrumentationSafetyTests(unittest.TestCase):
         self.assertTrue(validate_text(owner, injected))
 
     def test_standalone_harness_still_rejects_prohibited_debug_buffers(self):
-        path = "native/motorola68000/amigaos/test-harnesses/tkpkg/tkpkg_debug_cli.asm"
+        path = "native/motorola68000/amigaos/tests/tkpkg/debug_cli.asm"
         self.assertTrue(validate_text(path, "move.l d0, RequestBuffer ; debug"))
 
 

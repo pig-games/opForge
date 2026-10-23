@@ -9,7 +9,7 @@ for safety and the [parity contract](../../agents/rules/native-rust-parity-porti
 for evidence limits.
 
 Contract IDs are stable 16-bit values in
-`native/motorola68000/amigaos/debug/debug_contract_ids.asm`. IDs are grouped by
+`native/motorola68000/amigaos/debug/contracts.asm`. IDs are grouped by
 expression request, buffer, result, statement, pass, selector, and encoder
 contracts. Renaming a symbolic constant does not authorize reusing its numeric
 ID for a different invariant.

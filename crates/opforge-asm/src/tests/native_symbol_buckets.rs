@@ -98,17 +98,11 @@ value .macro
 }
 
 fn imported_struct_member() -> (String, Vec<u8>) {
-    // The public type is in bucket 65, but its Used field is in bucket 768.
+    // The public type is in bucket 677, but its Used field is in bucket 996.
     // Import completion must use the same mask as scope insertion for both.
-    assert_eq!(
-        symbol_bucket("experimental.amigaos.binary_memory.Block"),
-        65
-    );
-    assert_eq!(
-        symbol_bucket("experimental.amigaos.binary_memory.Block.Used"),
-        768
-    );
-    let source = r#".module experimental.amigaos.binary_memory
+    assert_eq!(symbol_bucket("opforge.platform.memory.Block"), 677);
+    assert_eq!(symbol_bucket("opforge.platform.memory.Block.Used"), 996);
+    let source = r#".module opforge.platform.memory
 .cpu 68020
 .pub
 Block .struct
@@ -117,9 +111,9 @@ Capacity .long ?
 Used .long ?
 .endstruct
 .endmodule
-.module experimental.amigaos.binary_values
+.module opforge.assembler.values.values
 .cpu 68020
-.use experimental.amigaos.binary_memory as memory
+.use opforge.platform.memory as memory
 Owner .struct
 Arena .res memory.Block.Used+4
 Kinds .res MEMORY.Block.Used+4

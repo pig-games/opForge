@@ -67,7 +67,7 @@ Tail .res word
 .end
 "#;
 
-const MODULE_STRUCT_EXTENT_SOURCE: &str = r#".module prvm.amigaos.macro_descriptors
+const MODULE_STRUCT_EXTENT_SOURCE: &str = r#".module opforge.vm.prvm.macro_descriptors
 .cpu m68020
 MAX_RECORDS=64
 RECORD_BYTES=32

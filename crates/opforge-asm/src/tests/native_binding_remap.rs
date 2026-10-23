@@ -52,7 +52,7 @@ const REFERENCES: Probe = Probe {
 
 const BINARY_BYTES: Probe = Probe {
     name: "opaque-binary-byte-boundaries",
-    stem: "binary_bytes",
+    stem: "bytes",
     output_stem: "binary-bytes",
     artifact: "Work/binary-bytes.bin",
     source_root_env: "OPFORGE_BINARY_BYTES_SOURCE_ROOT",
@@ -67,7 +67,7 @@ fn component_image(dir: &Path, probe: &Probe) -> (Vec<u8>, String) {
         .canonicalize()
         .unwrap();
     let source = fs::read_to_string(root.join(format!(
-        "native/motorola68000/amigaos/test-harnesses/experimental/{}.asm",
+        "native/motorola68000/amigaos/tests/assembler/{}.asm",
         probe.stem
     )))
     .unwrap();
@@ -83,6 +83,8 @@ fn component_image(dir: &Path, probe: &Probe) -> (Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         source_root.to_string_lossy().into_owned(),
+        "-I".into(),
+        source_root.join("amigaos").to_string_lossy().into_owned(),
         "-I".into(),
         source_root
             .join("amigaos/debug")

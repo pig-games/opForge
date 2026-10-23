@@ -63,7 +63,7 @@ Tag .byte ?
 .end
 "#;
 
-const SELF_HOST_DESCRIPTOR_FIELDS: &str = r#".module prvm.amigaos.macro_descriptors
+const SELF_HOST_DESCRIPTOR_FIELDS: &str = r#".module opforge.vm.prvm.macro_descriptors
 .cpu m68020
 .pub
 State .struct
@@ -108,12 +108,11 @@ fn compact_assembly_instruction_failure_trace_fs_uae() {
 }
 
 fn package_layout_source() -> String {
-    let package =
-        include_str!("../../../../native/motorola68000/amigaos/experimental/binary_package.asm");
-    format!("{package}\n.module app\n.cpu m68020\n.use experimental.amigaos.binary_package as pkg\n.long pkg.PARAMETER_BYTES,pkg.Context.High,pkg.Context.Package,pkg.Parameter.Low,pkg.Parameter.High\n.endmodule\n")
+    let package = include_str!("../../../../native/motorola68000/amigaos/packages/format.asm");
+    format!("{package}\n.module app\n.cpu m68020\n.use opforge.packages.format as pkg\n.long pkg.PARAMETER_BYTES,pkg.Context.High,pkg.Context.Package,pkg.Parameter.Low,pkg.Parameter.High\n.endmodule\n")
 }
 
-const LONG_IMPORTED_FIELD: &str = r#".module experimental.amigaos.binary_ordered_records
+const LONG_IMPORTED_FIELD: &str = r#".module opforge.assembler.prepare.record_order
 .cpu m68020
 .pub
 Frame .struct
@@ -125,7 +124,7 @@ SourceSpanCount .long ?
 .endmodule
 .module app
 .cpu m68020
-.use experimental.amigaos.binary_ordered_records as ordered
+.use opforge.assembler.prepare.record_order as ordered
 .byte ordered.Frame.SourceSpanCount
 .endmodule
 "#;
@@ -142,8 +141,8 @@ fn compact_struct_long_imported_field_fs_uae() {
 }
 
 fn imported_reservation_source(owner_first: bool) -> String {
-    let abi = include_str!("../../../../native/motorola68000/amigaos/prvm/prvm_abi.asm");
-    let app = ".module app\n.cpu m68020\n.use prvm.amigaos.abi as abi\nFrame .struct\nRequest .res abi.PRVM_REQUEST_FRAME_SIZE\nResult .res 32\n.endstruct\n.byte Frame.Result\n.endmodule\n";
+    let abi = include_str!("../../../../native/motorola68000/amigaos/vm/prvm/abi.asm");
+    let app = ".module app\n.cpu m68020\n.use opforge.vm.prvm.abi as abi\nFrame .struct\nRequest .res abi.PRVM_REQUEST_FRAME_SIZE\nResult .res 32\n.endstruct\n.byte Frame.Result\n.endmodule\n";
     if owner_first {
         format!("{abi}\n{app}")
     } else {
@@ -479,7 +478,7 @@ fn native(source: &str, cpu: &str) {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_STRUCT_LAYOUT cpu={cpu} source_bytes={} output_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={}", source.len(), expected.len(), runs[0].start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total());
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         let record = &runs[0].captured_artifacts[&PathBuf::from("Work/memory.bin")];

@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from capture_native_live import hunk_segments
+from native_case_runner import hunk_segments
 
 
 TEST_NAME = "native_active_include_control_fs_uae"

@@ -1,0 +1,4591 @@
+; Streaming line tokenization and numeric lowering. Scratch is caller-owned and
+; bounded; no source text enters packed records.
+; @opforge-owner: opforge.assembler.prepare.frontend
+	.module opforge.assembler.prepare.frontend
+	.cpu 68020
+	.use opforge.assembler.symbols.lexical_store as lexical
+	.include "memory_telemetry.i"
+	.include "capture_telemetry.i"
+	.include "lazy_audit.i"
+	.include "lazy_work_context.i"
+	.include "macro_packing_audit.i"
+	.use opforge.assembler.symbols.name_store as nameStore
+	.use opforge.packages.format as package
+	.use opforge.assembler.layout.state as state
+	.use opforge.assembler.source.records as writer
+	.use opforge.assembler.symbols.members as members
+	.use opforge.assembler.prepare.member_syntax as memberSyntax
+	.use opforge.assembler.prepare.prepare as prepare
+	.use opforge.assembler.prepare.operand_binding as operand_binding
+	.use opforge.assembler.prepare.expression as expression
+	.use opforge.assembler.prepare.data as data_prepare
+	.use opforge.assembler.prepare.metadata as metadata
+	.use opforge.vm.prvm.packed_metadata as metadata_vm
+	.use opforge.assembler.symbols.scopes as scopes
+	.use opforge.assembler.symbols.scope_layout as layout
+	.use opforge.assembler.symbols.binding_records as binding_records
+	.use opforge.assembler.language.structs as structs
+	.use opforge.assembler.language.conditionals as conditionals
+	.use opforge.assembler.language.templates as templates
+	.use opforge.assembler.source.capture as capture
+	.use opforge.assembler.language.macro_plans as macro_plans
+	.include "candidate_audit.i"
+	.use opforge.assembler.language.statement_heads as statement_heads
+	.use opforge.assembler.language.statement_session as statement_session
+	.use opforge.assembler.language.statement_execution as statement_execution
+	.use opforge.assembler.language.statements as statements
+	.use opforge.assembler.symbols.imports as imports
+	.use opforge.assembler.modules.graph as graph
+	.use opforge.assembler.layout.block_index as blocks
+	.use opforge.assembler.modules.bindings as modules
+	.use opforge.platform.memory as memory
+	.use opforge.assembler.values.values as values
+	.use opforge.assembler.values.structs as struct_values
+	.use opforge.vm.tkvm.runtime as tokenizer
+	.use opforge.vm.tkvm.fragments as fragment_tokenizer
+	.use opforge.assembler.language.macro_fragments as fragment_binding
+	.use opforge.vm.tkvm.control as control
+	.use opforge.vm.prvm.macro_runtime as macro_runtime
+	.use opforge.vm.prvm.packed_file as file_parser
+	.use opforge.assembler.language.declaration as declaration
+	.use opforge.vm.prvm.packed_declaration as declaration_parser
+	.use opforge.vm.prvm.packed_loop as loop_parser
+	.use opforge.vm.prvm.runtime as parser_runtime
+	.use opforge.vm.prvm.abi as parser_abi
+	.use opforge.vm.prvm.macro_spelling as spelling
+	.use opforge.assembler.language.text_names as textNames
+	.use opforge.vm.prvm.packed_text as text
+	.include "hotspot_telemetry.i"
+	.pub
+Frame	.struct
+Package	.long ?
+Source	.long ?
+SourceBytes	.long ?
+Output	.long ?
+Capacity	.long ?
+Used	.long ?
+NameCount	.long ?
+Scratch	.long ?
+Graph	.long ?
+GraphBefore	.long ?
+FileInclude	.long ?  ; optional preparation callback, A0=Frame,A1=PRVM file plan
+Origin	.long ?  ; opaque application source identity for file callbacks
+Metadata	.long ?  ; optional metadata.Config, retained outside execution records
+RootFile	.word ?  ; current source belongs to the entry file (includes inherit it)
+SourcePending	.word ?  ; selected source request awaits caller cursor ownership
+SourceOwned	.word ?  ; current cursor was acquired by an active source include
+ExpansionFloor	.word ?  ; protect suspended parent template frames
+SourceIteration	.word ?  ; selected preparation iteration flattens runtime controls
+SourceControl	.long ?  ; optional packed source-control callback before preparation
+SourceCursor	.long ?  ; caller-owned captured cursor view/seek callback
+SourcePeek	.long ?  ; caller-owned transient capture view callback
+PreviewMode	.word ?  ; identity-only binding suppresses semantic references
+AsciiName	.word ?  ; global source-origin encoding identity
+PetsciiName	.word ?
+CaptureBody	.long ?  ; physical acquisition retains whole-line template body plans
+	.endstruct
+	.pub
+FRAME_BYTES = Frame.CaptureBody+4
+PREP_DECLARATION = 1
+PREP_CONDITIONAL = 2
+PREP_CONFIGURATION = 3
+PREP_OPERAND_ROLES = 4
+PREP_SCOPE = 5
+PREP_FILE = 6
+PREP_DATA = 7
+PREP_EXPRESSION = 8
+PREP_WRITER = 9
+PREP_TEMPLATE = 10
+PREP_FRAGMENT_BIND = 11
+PREP_FRAGMENT_SUFFIX = 12
+PREP_FRAGMENT_APPEND = 13
+PREP_STATEMENT_STORE = 14
+PREP_STATEMENT_CALL = 15
+; Last attempted preparation boundary, observed only by the existing gated
+; failure/progress macros. It has no release storage or runtime updates.
+.ifdef OPFORGE_DEBUG_CONTRACTS
+.ifdef OPFORGE_MEMORY_TELEMETRY
+.ifdef OPFORGE_PREPARATION_PROGRESS
+	.section bss, kind=bss
+PreparationStage	.res long, 1
+; Two diagnostic-only pointers followed by the bounded raw writer prefix.
+PreparationInput	.res byte, PREPARATION_POSITION_BYTES
+; Scalars only: retain owner-boundary evidence after capture/stack cleanup.
+CapturedPlanRole	.res long, 1
+CapturedPlanLineStatus	.res long, 1
+CapturedPlanLineHandle	.res long, 1
+CapturedPlanBytes	.res long, 1
+CapturedPlanUsedBefore	.res long, 1
+CapturedPlanBindStatus	.res long, 1
+CapturedPlanBoundHandle	.res long, 1
+CapturedPlanUsedAfter	.res long, 1
+CapturedPlanSelectedHandle	.res long, 1
+	.endsection
+.endif
+.endif
+.endif
+	.pub
+GRAPH_BYTES = graph.SCRATCH_BYTES
+GRAPH_SPAN_BYTES = graph.MAX_SPANS*graph.SPAN_BYTES
+	.priv
+HEADER_BYTES = package.HEADER_BYTES
+PROGRAM = 0
+PROGRAM_BYTES = 4
+PACKAGE_BASE = 8
+DICTIONARY_COUNT = 12
+PACKAGE_END = 16
+LINE_NUMBER = 20
+NEXT_ID = 24
+CAPTURE_RECORD = 28
+SESSION_FRAME = CAPTURE_RECORD+4; borrowed owner for binder preview policy
+LINE_FRAME = SESSION_FRAME+4
+TOKENS = LINE_FRAME+writer.FRAME_BYTES
+TOKEN_CAPACITY = 64
+LEXICAL_BYTES = 1024
+; Preserve the lexical budget plus copied number spellings and u64 metadata.
+NUMBER_BYTES = 2*LEXICAL_BYTES+TOKEN_CAPACITY*8
+; Recipe copies and literal-fragment framing are bounded by lexical work.
+COMPOSED_BYTES = 3*LEXICAL_BYTES+TOKEN_CAPACITY*4
+LEXEME_BYTES = NUMBER_BYTES+COMPOSED_BYTES
+PACKED_MAP = TOKENS+TOKEN_CAPACITY*20
+LEXEMES = (PACKED_MAP+(TOKEN_CAPACITY+1)*2+3)&$fffffffc
+; Keep directly addressed regions below signed d16 displacement limits.
+PACKAGE_BUCKETS = LEXEMES+LEXEME_BYTES
+	.pub
+MACRO_REQUEST = PACKAGE_BUCKETS+256*4
+MACRO_EVENTS = MACRO_REQUEST+parser_abi.PRVM_REQUEST_FRAME_SIZE
+MACRO_PLANS = MACRO_EVENTS+64*parser_abi.PRVM_RESULT_RECORD_SIZE
+MACRO_FRAME = MACRO_PLANS+macro_plans.STATE_BYTES
+MACRO_SPELL_EVENTS = MACRO_FRAME+macro_plans.GENERATED_FRAME_BYTES
+MACRO_SPELL_FRAME = MACRO_SPELL_EVENTS+64*parser_abi.PRVM_RESULT_RECORD_SIZE
+MACRO_SPELL_SCRATCH = MACRO_SPELL_FRAME+spelling.FRAME_BYTES
+PREPARED_LINE = MACRO_SPELL_SCRATCH+spelling.SCRATCH_BYTES
+SCOPE_STATE = PREPARED_LINE+256
+CONDITION_STATE = SCOPE_STATE+scopes.SCRATCH_BYTES
+TEMPLATE_STATE = CONDITION_STATE+conditionals.SCRATCH_BYTES
+EXPRESSION_WORK = (TEMPLATE_STATE+templates.SCRATCH_BYTES+3)&$fffffffc
+TEXT_NAME_BUFFER = EXPRESSION_WORK+expression.WORKSPACE_BYTES
+STATEMENT_HEAD_NAMES = TEXT_NAME_BUFFER+layout.NAME_BYTES
+STATEMENT_STATE = STATEMENT_HEAD_NAMES+statement_heads.CACHE_BYTES
+STATEMENT_EXECUTION = STATEMENT_STATE+statement_session.STATE_BYTES
+SCRATCH_BYTES = STATEMENT_EXECUTION+statement_execution.STATE_BYTES
+	.priv
+FRAGMENT_REQUEST = fragment_binding.FRAME_BYTES
+FRAGMENT_VIEWS = FRAGMENT_REQUEST+fragment_tokenizer.FRAME_BYTES
+FRAGMENT_SCRATCH = FRAGMENT_VIEWS+64*fragment_binding.FRAGMENT_BYTES
+GENERATED_FRAGMENTS = 0
+GENERATED_REQUEST = GENERATED_FRAGMENTS+2*fragment_tokenizer.FRAGMENT_BYTES
+GENERATED_RECORD = GENERATED_REQUEST+fragment_tokenizer.FRAME_BYTES
+GENERATED_SPACE = GENERATED_RECORD+256
+GENERATED_BYTES = GENERATED_SPACE+2
+	.priv
+; The head policy inspects at most two logical TKVM records. A composed recipe
+; occupies one logical record, and the three boundary entries map PRVM's cursor
+; back to the physical token array used by the writer.
+HEAD_REQUEST = 0
+HEAD_RESULTS = HEAD_REQUEST+parser_abi.PRVM_REQUEST_FRAME_SIZE
+HEAD_DIAGNOSTIC = HEAD_RESULTS+3*parser_abi.PRVM_RESULT_RECORD_SIZE
+HEAD_RESUME = HEAD_DIAGNOSTIC+64
+HEAD_EXPR = HEAD_RESUME+512
+HEAD_TOKENS = HEAD_EXPR+parser_abi.PRVM_EXPR_REQUEST_RECORD_SIZE
+HEAD_MAP = HEAD_TOKENS+2*parser_abi.PRVM_TOKEN_RECORD_SIZE
+HEAD_WORK_BYTES = HEAD_MAP+8
+; Package nodes hold capsule-relative entries and scratch-relative chain links.
+Node	.struct
+Entry	.long ?
+Next	.long ?
+	.endstruct
+	.section code, kind=code
+	.pub
+; A0=frontend Frame,A1=validated owned capture.Record. D0/CCR=statement
+; status,D1=shared A8 role. Other registers preserved. Acquisition examines
+; lexical metadata only, before source identities or declarations exist.
+captureStatementRole	.block
+	movem.l d2/a0-a2, -(sp)
+	suba.w #statement_heads.FRAME_BYTES, sp
+	move.l Frame.Package(a0), statement_heads.Frame.Package(sp)
+	movea.l Frame.Scratch(a0), a2
+	adda.l #STATEMENT_HEAD_NAMES, a2
+	move.l a2, statement_heads.Frame.Names(sp)
+	lea capture.HEADER_BYTES(a1), a2
+	move.l a2, statement_heads.Frame.Tokens(sp)
+	moveq #0, d2
+	move.b capture.Record.Count(a1), d2
+	move.l d2, statement_heads.Frame.Count(sp)
+	mulu.w #tokenizer.TOKEN_RECORD_SIZE, d2
+	adda.l d2, a2
+	move.l a2, statement_heads.Frame.Lexemes(sp)
+	move.l capture.Record.LexemeBytes(a1), statement_heads.Frame.LexemeBytes(sp)
+	movea.l sp, a0
+	jsr statement_heads.classify
+	.LAZY_CLASSIFY
+	adda.w #statement_heads.FRAME_BYTES, sp
+	tst.l d0
+	movem.l (sp)+, d2/a0-a2
+	rts
+	.bend  ; captureStatementRole
+
+; Compute scratch including one offset-chain node per dictionary entry.
+; A0=readable capsule header; D0=status, D1=bytes on success; CCR=D0.
+; Other registers preserved. The capsule byte bound limits count, not a new cap.
+scratchSize	.block
+	movem.l d2, -(sp)
+	cmpi.l #package.MAGIC, package.Header.Magic(a0)
+	bne.w bad
+	move.l package.Header.Bytes(a0), d2
+	cmpi.l #HEADER_BYTES, d2
+	blo.w bad
+	subi.l #HEADER_BYTES, d2
+	lsr.l #3, d2
+	move.l package.Header.DictionaryCount(a0), d1
+	cmp.l d2, d1
+	bhi.w bad
+	lsl.l #3, d1
+	addi.l #SCRATCH_BYTES, d1
+	bcs.w bad
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2
+	rts
+	.bend  ; scratchSize
+; Begin a streaming frontend session. A0=Frame with a readable package capsule
+; and scratchSize bytes of caller-owned aligned, zero-initialized scratch (or a
+; prior session ended with finish). D0=0 success, 1 invalid.
+; Resets symbols and source-line numbering. Preserves other registers; CCR=D0.
+begin	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	clr.l Frame.NameCount(a5)
+	clr.w Frame.SourcePending(a5)
+	clr.w Frame.SourceOwned(a5)
+	clr.w Frame.ExpansionFloor(a5)
+	clr.w Frame.SourceIteration(a5)
+	clr.w Frame.PreviewMode(a5)
+	clr.l Frame.Graph(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w failed
+	move.l a6, d0
+	andi.l #3, d0
+	bne.w failed
+	move.l a5, SESSION_FRAME(a6)
+	clr.l CAPTURE_RECORD(a6)
+	lea PACKAGE_BUCKETS(a6), a0
+	move.l #256-1, d0
+clearBuckets
+	clr.l (a0)+
+	dbra d0, clearBuckets
+	bsr.w configure
+	bne.w failed
+	movea.l Frame.Package(a5), a0
+	movea.l a6, a1
+	adda.l #STATEMENT_HEAD_NAMES, a1
+	jsr statement_heads.configure
+	bne.w failed
+	movea.l a6, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.begin
+	movea.l a6, a0
+	adda.l #STATEMENT_EXECUTION, a0
+	jsr statement_execution.begin
+	bne.w failed
+	lea SCOPE_STATE(a6), a0
+	move.l NEXT_ID(a6), d0
+	movea.l Frame.Package(a5), a1
+	moveq #0, d1
+	move.w package.Header.EndDirective(a1), d1
+	jsr scopes.begin
+	bne.w failed
+	lea AsciiSpelling, a0
+	moveq #5, d0
+	movea.l a6, a1
+	bsr.w bindTextName
+	bne.w failed
+	move.w d1, Frame.AsciiName(a5)
+	lea PetsciiSpelling, a0
+	moveq #7, d0
+	movea.l a6, a1
+	bsr.w bindTextName
+	bne.w failed
+	move.w d1, Frame.PetsciiName(a5)
+	lea SCOPE_STATE(a6), a0
+	movea.l Frame.Package(a5), a1
+	jsr scopes.configureLoops
+	lea SCOPE_STATE(a6), a0
+	adda.l #scopes.STRUCT_STATE, a0
+	movea.l Frame.Package(a5), a1
+	jsr structs.configure
+	lea SCOPE_STATE(a6), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.begin
+	bne.w failed
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.begin
+	bne.w failed
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.begin
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	lea MACRO_PLANS(a6), a1
+	move.l a1, templates.State.Plans(a0)
+	move.l #generatedPlan, templates.State.GeneratedPlan(a0)
+	move.l #fragmentLine, templates.State.FragmentLine(a0)
+	move.l a5, templates.State.ParserContext(a0)
+	move.l Frame.Package(a5), templates.State.Package(a0)
+	move.l #1, LINE_NUMBER(a6)
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; begin
+; Opt in to numeric module graph ordering. A0=Frame, A1=caller-owned graph
+; scratch. D0/CCR=status; other registers preserved.
+beginGraph	.block
+	movem.l a0-a2, -(sp)
+	move.l a1, d0
+	beq.w badGraph
+	andi.l #3, d0
+	bne.w badGraph
+	move.l a1, Frame.Graph(a0)
+	movea.l a1, a0
+	jsr graph.begin
+	bra.w graphDone
+badGraph
+	moveq #1, d0
+graphDone
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; beginGraph
+
+; A0=frontend Frame,A1=external u16 table,D0=table capacity in bytes.
+; Copy immutable member keys indexed by actual symbol ID; no allocation/binding.
+; D0/CCR=status. Other registers preserved; Frame.NameCount refreshed.
+copyMemberKeys	.block
+	movem.l d1-d5/a0-a3, -(sp)
+	movea.l a0, a3
+	movea.l Frame.Scratch(a3), a2
+	lea SCOPE_STATE(a2), a2
+	moveq #0, d1
+	move.w layout.State.Base(a2), d1
+	moveq #0, d2
+	move.w layout.State.Count(a2), d2
+	move.l d1, d3
+	add.l d2, d3
+	move.l d3, Frame.NameCount(a3)
+	add.l d3, d3
+	cmp.l d3, d0
+	blo.w bad
+	move.l a1, d0
+	beq.w bad
+	movea.l a1, a0
+	move.l d1, d4
+reserved
+	tst.l d4
+	beq.w entries
+	move.w #$ffff, (a0)+
+	subq.l #1, d4
+	bra.w reserved
+entries
+	moveq #0, d5
+copy
+	tst.l d2
+	beq.w ok
+	move.l a0, -(sp)
+	move.l d5, d0
+	movem.l a0-a1, -(sp)
+	lea layout.LEXICAL_STATE(a2), a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	movem.l (sp)+, a0-a1
+	lea LexicalEntry, a1
+	movea.l (sp)+, a0
+	bne.w bad
+	move.w binding_records.Entry.MemberId(a1), (a0)+
+	addq.l #1, d5
+	subq.l #1, d2
+	bra.w copy
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0-a3
+	tst.l d0
+	rts
+	.bend  ; copyMemberKeys
+
+; A0=frontend Frame,A1=configured values Owner. Copy finalized numeric plans.
+; D0/CCR=status; all other registers preserved. Call before frontend release.
+exportBindings	.block
+	movem.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.exportBindings
+	movem.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; exportBindings
+
+; A0=frontend Frame,A1=configured values Owner. Copy retained schemas.
+; D0/CCR=status; others preserved. Seeds outlive all preparation metadata.
+EXPORTED_SEEDS = SCOPE_STATE+scopes.IMPORT_STATE+imports.KNOWN_OWNER+values.Owner.Seeds
+exportSeeds	.block
+	movem.l d1/a0-a2, -(sp)
+	movea.l a1, a2
+	movea.l Frame.Scratch(a0), a0
+	adda.l #EXPORTED_SEEDS, a0
+	move.l memory.Block.Used(a0), d0
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l a2, a0
+	jsr struct_values.installSeeds
+	bne.w done
+	movea.l 4(sp), a0  ; saved frontend Frame, independent of copied seed storage
+	movea.l Frame.Scratch(a0), a0
+	adda.l #EXPORTED_SEEDS+values.Owner.SchemaReplay-values.Owner.Seeds, a0
+	move.l memory.Block.Used(a0), d0
+	movea.l memory.Block.Pointer(a0), a1
+	movea.l a2, a0
+	jsr struct_values.installReplaySeeds
+done
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	rts
+	.bend  ; exportSeeds
+
+; A0=Frame,A1=file basename,D0=name bytes. Enter file-derived module ownership
+; before lowering physical lines. D0/CCR=status; other registers preserved.
+beginFileDerived	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a2), a0
+	lea SCOPE_STATE(a0), a0
+	jsr scopes.beginFileDerived
+	bne.w fileDerivedDone
+	move.l d1, d3
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d0
+	beq.w fileDerivedCount
+	moveq #0, d0
+	moveq #0, d1
+	move.l d3, d2
+	jsr graph.line
+	bne.w fileDerivedDone
+fileDerivedCount
+	movea.l Frame.Scratch(a2), a0
+	lea SCOPE_STATE(a0), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a2)
+	moveq #0, d0
+fileDerivedDone
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; beginFileDerived
+
+; A0=Frame. Close any file-derived module not already closed by .end; graph
+; receives a zero-byte boundary, leaving physical record provenance intact.
+; D0/CCR=status; other registers preserved.
+endFileDerived	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a2), a1
+	movea.l a1, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.endFile
+	bne.w endFileDerivedDone
+	moveq #0, d2
+	tst.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.FileDerived(a1)
+	beq.w noFileDerivedActive
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+noFileDerivedActive
+	lea SCOPE_STATE(a1), a0
+	jsr scopes.endFileDerived
+	bne.w endFileDerivedDone
+	tst.l d2
+	beq.w endFileDerivedOk
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d0
+	beq.w endFileDerivedOk
+	moveq #0, d0
+	move.l d2, d1
+	moveq #0, d2
+	jsr graph.line
+	bra.w endFileDerivedDone
+endFileDerivedOk
+	moveq #0, d0
+endFileDerivedDone
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; endFileDerived
+; Set the physical source line before lowering a line from an included file.
+; A0=active Frame, D0=1..65535. D0/CCR=status; other registers preserved.
+setLine	.block
+	movem.l d1/a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	move.l a1, d1
+	beq.w invalidLine
+	tst.l d0
+	beq.w invalidLine
+	cmpi.l #65535, d0
+	bhi.w invalidLine
+	move.l d0, LINE_NUMBER(a1)
+	moveq #0, d0
+	bra.w lineSet
+invalidLine
+	moveq #1, d0
+lineSet
+	movem.l (sp)+, d1/a1
+	tst.l d0
+	rts
+	.bend  ; setLine
+; Lower one caller-bounded line. A0=the session Frame; Source excludes its line
+; ending and Output has per-line packed-record capacity. D0=0 success, 1 failure.
+; Used is this line's packed byte count; NameCount is the next free identifier.
+; Preserves other registers; CCR reflects D0. Used=0 on failure.
+line	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w failed
+	cmpi.l #65535, LINE_NUMBER(a6)
+	bhi.w failed
+	movea.l Frame.Source(a5), a0
+	move.l Frame.SourceBytes(a5), d0
+	bmi.w failed
+	move.l a0, d1
+	add.l d0, d1
+	bcs.w failed
+	movea.l Frame.Output(a5), a4
+	move.l Frame.Capacity(a5), d1
+	beq.w failed
+	move.l a4, d2
+	add.l d1, d2
+	bcs.w failed
+	clr.l CAPTURE_RECORD(a6)
+	bsr.w tokenizeLine
+	bne.w failed
+	bsr.w lowerTokens
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; line
+
+; A0=session,A1=capture.Frame with Arena=caller-owned memory.Block.
+; Capture unbound TKVM rows and all VM candidate plans without binding names or
+; advancing scope/template/graph/line state. D0/CCR=status,D1=record handle;
+; other registers preserved. Source is used only here, never by replayLine.
+captureLine	.block
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_LINE
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	.WORK_CAPTURE_RESET a4
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	cmpi.l #65535, LINE_NUMBER(a6)
+	bhi.w bad
+	bsr.w tokenizeLine
+	bne.w bad
+	lea TOKENS(a6), a0
+	move.l a0, capture.Frame.Tokens(a4)
+	move.l d1, capture.Frame.Count(a4)
+	move.l d1, LINE_FRAME+writer.Frame.Count(a6)
+	lea LEXEMES(a6), a0
+	move.l a0, capture.Frame.Lexemes(a4)
+	move.l d3, capture.Frame.LexemeBytes(a4)
+	move.l Frame.SourceBytes(a5), capture.Frame.SourceBytes(a4)
+	move.l Frame.Origin(a5), capture.Frame.Origin(a4)
+	move.l LINE_NUMBER(a6), capture.Frame.Line(a4)
+	move.w Frame.RootFile(a5), capture.Frame.RootFile(a4)
+	clr.w capture.Frame.Reserved(a4)
+	suba.w #memory.Block.Used+4, sp
+	movea.l sp, a0
+	clr.l memory.Block.Pointer(a0)
+	clr.l memory.Block.Capacity(a0)
+	clr.l memory.Block.Used(a0)
+	move.l a0, capture.Frame.Plans(a4)
+	.CANDIDATE_BEGIN
+	bsr.w captureCandidates
+	.CANDIDATE_END a4
+	bne.w releaseBad
+	movea.l a4, a0
+	jsr capture.create
+	.CANDIDATE_CREATED a4
+	bra.w release
+releaseBad
+	moveq #1, d0
+	moveq #0, d1
+release
+	move.l d0, -(sp)
+	movea.l capture.Frame.Plans(a4), a0
+	jsr memory.release
+	move.l (sp)+, d0
+	clr.l capture.Frame.Plans(a4)
+	adda.w #memory.Block.Used+4, sp
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_LINE
+	rts
+	.bend  ; captureLine
+
+; A0=session,A1=capture memory.Block,D1=record handle. Replay existing owned
+; tokens through current contextual binding and all ordinary semantic consumers.
+; No original source is read or re-tokenized. D0/CCR=status; other regs preserved.
+; Frame.Used/NameCount and nextExpansion retain the direct line API contract.
+replayLine	.block
+	.WORK_CALL lazy_work.sampleEnd
+	.HOTSPOT_ENTER #HOTSPOT_REPLAY_LINE
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	movea.l a1, a0
+	jsr capture.resolve
+	bne.w bad
+	movea.l a1, a4
+	.CANDIDATE_OWNER
+	.HOTSPOT_COUNT_IF_EQ_BYTE capture.Record.Count(a4), #0, HOTSPOT_REPLAY_EMPTY_RECORDS, #1
+	move.l capture.Record.LexemeBytes(a4), d3
+	cmpi.l #LEXEME_BYTES, d3
+	bhi.w bad
+	move.l Frame.Source(a5), -(sp)
+	move.l Frame.SourceBytes(a5), -(sp)
+	clr.l Frame.Source(a5)
+	clr.l Frame.SourceBytes(a5)
+	move.l a4, CAPTURE_RECORD(a6)
+	moveq #0, d1
+	move.w capture.Record.Line(a4), d1
+	move.l d1, LINE_NUMBER(a6)
+	move.l capture.Record.Origin(a4), Frame.Origin(a5)
+	.WORK_SAMPLE_BEGIN Frame.Origin(a5)
+	moveq #0, d1
+	move.b capture.Record.RootFile(a4), d1
+	move.w d1, Frame.RootFile(a5)
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
+	move.l d1, d0
+	mulu.w #20, d0
+	lea capture.HEADER_BYTES(a4), a0
+	lea TOKENS(a6), a1
+	bsr.w copyCaptureBytes
+	lea LEXEMES(a6), a1
+	move.l d3, d0
+	bsr.w copyCaptureBytes
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
+	bsr.w lowerTokens
+	clr.l CAPTURE_RECORD(a6)
+	move.l (sp)+, Frame.SourceBytes(a5)
+	move.l (sp)+, Frame.Source(a5)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_REPLAY_LINE
+	rts
+	.bend  ; replayLine
+
+Preview	.struct
+Output	.long ?
+Used	.long ?
+Origin	.long ?
+Names	.long ?
+Line	.long ?
+Root	.word ?
+Mode	.word ?
+FirstBound	.word ?
+FirstExplicit	.word ?
+BindingMode	.word ?
+.endstruct
+PREVIEW_BYTES = Preview.BindingMode+2
+
+; A0=session,A1=capture block,D1=handle,A2=disjoint MAX_LINE destination.
+; Bind a numeric preview without executing semantics. D0/CCR=status,A1=preview,
+; D1=bytes. Other registers preserved. Names may be interned by the binder;
+; no scope, template, graph or known-value action is performed.
+previewCapture	.block
+	.HOTSPOT_ENTER #HOTSPOT_CAPTURE_PREVIEW
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	suba.w #PREVIEW_BYTES, sp
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l a2, d7
+	move.l Frame.Output(a5), Preview.Output(sp)
+	move.l Frame.Used(a5), Preview.Used(sp)
+	move.l Frame.Origin(a5), Preview.Origin(sp)
+	move.l Frame.NameCount(a5), Preview.Names(sp)
+	move.l LINE_NUMBER(a6), Preview.Line(sp)
+	move.w Frame.RootFile(a5), Preview.Root(sp)
+	move.w Frame.PreviewMode(a5), Preview.Mode(sp)
+	move.w SCOPE_STATE+layout.State.FirstBound(a6), Preview.FirstBound(sp)
+	move.w SCOPE_STATE+layout.State.FirstExplicit(a6), Preview.FirstExplicit(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), Preview.BindingMode(sp)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w #1, Frame.PreviewMode(a5)
+	move.l a2, Frame.Output(a5)
+	bsr.w bindCapture
+	move.l d0, d6
+	move.l Frame.Used(a5), d1
+	move.l Preview.Output(sp), Frame.Output(a5)
+	move.l Preview.Used(sp), Frame.Used(a5)
+	move.l Preview.Origin(sp), Frame.Origin(a5)
+	move.l Preview.Names(sp), Frame.NameCount(a5)
+	move.l Preview.Line(sp), LINE_NUMBER(a6)
+	move.w Preview.Root(sp), Frame.RootFile(a5)
+	move.w Preview.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w Preview.Mode(sp), Frame.PreviewMode(a5)
+	move.w Preview.FirstBound(sp), SCOPE_STATE+layout.State.FirstBound(a6)
+	move.w Preview.FirstExplicit(sp), SCOPE_STATE+layout.State.FirstExplicit(a6)
+	movea.l d7, a1
+	move.l d6, d0
+	adda.w #PREVIEW_BYTES, sp
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CAPTURE_PREVIEW
+	rts
+	.bend  ; previewCapture
+
+; A0=session,A1=capture memory.Block,D1=record handle. Materialize only the
+; writer record with the current binder. No plans/templates/scope semantics or
+; line advancement. D0/CCR=status; other registers preserved. Used/NameCount
+; are outputs. Configuration owners select records before calling this entry.
+bindCapture	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #0
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	movea.l Frame.Scratch(a5), a6
+	move.l a6, d0
+	beq.w bad
+	movea.l a1, a0
+	jsr capture.resolve
+	bne.w bad
+	movea.l a1, a4
+	move.l capture.Record.LexemeBytes(a4), d3
+	cmpi.l #LEXEME_BYTES, d3
+	bhi.w bad
+	moveq #0, d1
+	move.w capture.Record.Line(a4), d1
+	move.l d1, LINE_NUMBER(a6)
+	move.l capture.Record.Origin(a4), Frame.Origin(a5)
+	moveq #0, d1
+	move.b capture.Record.RootFile(a4), d1
+	move.w d1, Frame.RootFile(a5)
+	moveq #0, d0
+	move.b capture.Record.Count(a4), d0
+	mulu.w #20, d0
+	lea capture.HEADER_BYTES(a4), a0
+	lea TOKENS(a6), a1
+	bsr.w copyCaptureBytes
+	lea LEXEMES(a6), a1
+	move.l d3, d0
+	bsr.w copyCaptureBytes
+	move.l Frame.Source(a5), -(sp)
+	move.l Frame.SourceBytes(a5), -(sp)
+	clr.l Frame.Source(a5)
+	clr.l Frame.SourceBytes(a5)
+	moveq #0, d1
+	move.b capture.Record.Count(a4), d1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
+	bsr.w writeTokens
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w written
+	move.l d1, Frame.Used(a5)
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
+	jsr declaration.normalize
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w written
+	moveq #0, d1
+	move.b (a0), d1
+	addq.l #1, d1
+	move.l d1, Frame.Used(a5)
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a5)
+	moveq #0, d0
+written
+	move.l (sp)+, Frame.SourceBytes(a5)
+	move.l (sp)+, Frame.Source(a5)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; bindCapture
+	.priv
+
+; A0=owned capture input,A1=disjoint scratch destination,D0=bytes.
+; D0/A0/A1 scratch; CCR unspecified. Copy exactly D0 bytes, including tails.
+copyCaptureBytes	.block
+	.WORK_COUNT lazy_work.REPLAY_COPY, d0
+	.CAPTURE_COPY d0
+	cmpi.l #4, d0
+	blo.w tail
+longs
+	move.l (a0)+, (a1)+
+	subq.l #4, d0
+	cmpi.l #4, d0
+	bhs.w longs
+tail
+	cmpi.l #2, d0
+	blo.w byteTail
+	move.w (a0)+, (a1)+
+	subq.l #2, d0
+byteTail
+	tst.l d0
+	beq.w done
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+done
+	rts
+	.bend  ; copyCaptureBytes
+
+; A4=capture request,A5=session,A6=scratch. Candidate grammar failures remain
+; outcomes until contextual replay selects a role. Allocation failure aborts.
+captureCandidates	.block
+	.HOTSPOT_ENTER #HOTSPOT_CANDIDATE_ACQUISITION
+	movem.l d1-d7/a0-a4, -(sp)
+	suba.w #(TOKEN_CAPACITY+1)*2, sp
+	movea.l sp, a0
+	moveq #0, d0
+identityMap
+	move.w d0, (a0)+
+	addq.w #1, d0
+	cmpi.w #TOKEN_CAPACITY+1, d0
+	blo.w identityMap
+	moveq #1, d4
+	bsr.w captureCandidate
+	bne.w bad
+	move.l d5, capture.Frame.CallStatus(a4)
+	move.l d6, capture.Frame.CallHandle(a4)
+	move.l d7, capture.Frame.CallRecipeStatus(a4)
+	moveq #2, d4
+	bsr.w captureCandidate
+	bne.w bad
+	move.l d5, capture.Frame.HeaderStatus(a4)
+	move.l d6, capture.Frame.HeaderHandle(a4)
+	; Capture candidate plans for the same VM-token predicate used on replay.
+	moveq #1, d5
+	moveq #0, d6
+	lea TOKENS(a6), a0
+	move.l capture.Frame.Count(a4), d0
+	bsr.w bodyFragmentCandidate
+	tst.l d0
+	bne.w lineSelected
+	; Capture unresolved named formals before contextual binding. Replay
+	; still selects their recipe only when its numeric envelope requires it.
+	lea TOKENS(a6), a0
+	move.l capture.Frame.Count(a4), d0
+	bsr.w namedFragmentCandidate
+	tst.l d0
+	bne.w lineSelected
+	tst.l Frame.CaptureBody(a5)
+	beq.w lineReady
+	tst.l capture.Frame.Count(a4)
+	beq.w lineReady  ; blank/comment-only bodies have no matching facets
+	moveq #FRAGMENT_NONE, d0  ; whole-line body without a substitution marker
+lineSelected
+	move.l d0, d2  ; candidate role survives until fragment selection
+lineCandidate
+	moveq #3, d4
+	bsr.w captureCandidate
+	bne.w bad
+	tst.l d7
+	beq.w lineReady
+	moveq #capture.LINE_INVALID, d5  ; retained fragment plans require valid recipes
+lineReady
+	move.l d5, capture.Frame.LineStatus(a4)
+	move.l d6, capture.Frame.LineHandle(a4)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #(TOKEN_CAPACITY+1)*2, sp
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_CANDIDATE_ACQUISITION
+	rts
+	.bend  ; captureCandidates
+
+; A4=capture request,A5=session,A6=scratch,D4=candidate kind.
+; Identity map is at caller SP. D5=descriptor status,D6=handle,D7=recipe status;
+; D0/CCR=allocation/capture status. Other registers preserved.
+captureCandidate	.block
+	.WORK_ACQUIRE capture.CANDIDATE_COUNT, a4
+	movea.l sp, a0
+	addq.l #4, a0  ; skip BSR return address to caller identity map
+	movem.l d1-d4/a0-a4, -(sp)
+	moveq #0, d6
+	moveq #0, d7
+	cmpi.l #3, d4
+	beq.w lineRows
+	.WORK_ACQUIRE capture.DESCRIPTOR_COUNT, a4
+	bsr.w sourceDescriptors
+	move.l d0, d5
+	bne.w candidateReady
+	tst.l d1
+	bne.w rowsReady
+	moveq #1, d5  ; successful grammar no-match has no candidate plan
+	bra.w candidateReady
+lineRows
+	lea MACRO_EVENTS(a6), a1
+	movea.l a1, a0
+	moveq #macro_plans.ROW_BYTES/4-1, d0
+clearRow
+	clr.l (a0)+
+	dbra d0, clearRow
+	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	move.l capture.Frame.Count(a4), macro_plans.Row.PackedEnd(a1)
+	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
+	moveq #1, d1
+	moveq #0, d5
+rowsReady
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.Frame.Count(a0)
+	move.l capture.Frame.Plans(a4), macro_plans.Frame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	; Saved A0 is the caller's identity map (D1-D4 precede it on stack).
+	move.l 16(sp), macro_plans.Frame.PackedMap(a0)
+	move.l capture.Frame.Count(a4), macro_plans.Frame.TokenCount(a0)
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+	cmpi.l #2, d4
+	beq.w createCandidate
+	.WORK_ACQUIRE capture.FRAGMENT_COUNT, a4
+	bsr.w captureFragments
+	move.l d0, d7
+	bne.w failedRecipes
+	cmpi.l #3, d4
+	bne.w createCandidate
+	cmpi.l #FRAGMENT_NUMERIC, d2
+	bne.w createCandidate
+	move.l a0, -(sp)
+	move.l macro_plans.Frame.RecipeCount(a0), d0
+	movea.l macro_plans.Frame.RecipeEvents(a0), a0
+	moveq #0, d1
+	move.l capture.Frame.Count(a4), d2
+	bsr.w numericSuffixOverlap
+	movea.l (sp)+, a0
+	tst.l d0
+	beq.w createCandidate
+	tst.l Frame.CaptureBody(a5)
+	bne.w createCandidate
+	moveq #capture.LINE_ABSENT, d5  ; ordinary numeric lines retain no plan
+	bra.w candidateReady
+failedRecipes
+	cmpi.l #3, d4
+	bne.w discardRecipes
+	moveq #capture.LINE_INVALID, d5
+	bra.w candidateReady
+discardRecipes
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+createCandidate
+	.WORK_ACQUIRE capture.PLAN_CREATE_COUNT, a4
+	jsr macro_plans.create
+	bne.w bad
+	move.l d1, d6
+candidateReady
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d4/a0-a4
+	tst.l d0
+	rts
+	.bend  ; captureCandidate
+
+; A5=session,A6=scratch. Existing TKVM is the only physical-line lexer.
+; D0/CCR=status,D1=token count,D3=lexeme bytes; other registers preserved.
+tokenizeLine	.block
+	.HOTSPOT_ENTER #HOTSPOT_TOKENIZE
+	movem.l d2/d4-d7/a0-a4, -(sp)
+	movea.l Frame.Source(a5), a0
+	move.l Frame.SourceBytes(a5), d0
+	bmi.w bad
+	move.l a0, d1
+	add.l d0, d1
+	bcs.w bad
+	lea TOKENS(a6), a1
+	lea LEXEMES(a6), a2
+	movea.l PROGRAM(a6), a3
+	moveq #TOKEN_CAPACITY, d1
+	move.l #LEXEME_BYTES, d2
+	move.l PROGRAM_BYTES(a6), d3
+	.MEMORY_STAGE #2
+	jsr tokenizer.tkvmRun68000
+	bne.w bad
+	.MEMORY_STAGE #3
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2/d4-d7/a0-a4
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_TOKENIZE
+	rts
+	.bend  ; tokenizeLine
+
+; A5=session,A6=scratch,D1=token count,D3=lexeme bytes. Bind only now.
+; D0/CCR=status; other registers preserved.
+lowerTokens	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
+	movem.l d1-d7/a0-a6, -(sp)
+	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
+	.MEMORY_STAGE #3
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_BIND
+	bsr.w retainedFragmentBody
+	bne.w failed
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_WRITER
+	tst.l d2
+	bne.w templateDispatch
+	bsr.w writeTokens
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	.MEMORY_DETAIL_BEGIN #1
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	bsr.w initialPlan
+	.MEMORY_DETAIL_END #1
+	bne.w failed
+	.MEMORY_DETAIL_BEGIN #4
+	bsr.w fragmentLinePlan
+	.MEMORY_DETAIL_END #4
+	bne.w failed
+templateDispatch
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_STORE
+	bsr.w statementLine
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statements.ACTION_CONSUMED, d1
+	beq.w segmentConsumed
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_CALL
+	bsr.w statementInvoke
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statement_execution.ACTION_EXPANDED, d1
+	beq.w templateExpanded
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	movea.l Frame.Output(a5), a0
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	lea SCOPE_STATE(a6), a2
+	moveq #0, d0
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	move.w conditionals.State.Active(a0), d0
+	movea.l Frame.Output(a5), a0
+	move.l Frame.Origin(a5), templates.State.Origin(a1)
+	.MEMORY_DETAIL_BEGIN #5
+	jsr templates.line
+	.MEMORY_DETAIL_END #5
+	bne.w failed
+	cmpi.w #1, d1
+	beq.w segmentConsumed
+	cmpi.w #2, d1
+	bne.w process
+templateExpanded
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l Frame.Output(a5), a1
+	lea SCOPE_STATE(a6), a2
+	.MEMORY_DETAIL_BEGIN #6
+	bsr.w nextTemplate
+	.MEMORY_DETAIL_END #6
+	bne.w failed
+	tst.l d1
+	beq.w segmentConsumed
+	bsr.w expandRecord
+	bne.w failed
+	tst.w Frame.SourcePending(a5)
+	bne.w expansionPublished  ; suspended include owns the next publication
+	tst.l Frame.Used(a5)
+	beq.w segmentConsumed
+expansionPublished
+	addq.l #1, LINE_NUMBER(a6)
+	moveq #0, d0
+	bra.w done
+process
+	bsr.w processRecord
+	bne.w failed
+	addq.l #1, LINE_NUMBER(a6)
+	moveq #0, d0
+	bra.w done
+segmentConsumed
+	movea.l Frame.Output(a5), a0
+	move.b #3, (a0)
+	clr.b 1(a0)
+	bra.w process
+failed
+	moveq #1, d0
+done
+	tst.l d0
+	bne.w checked
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+	tst.l d0
+	beq.w checked
+	clr.l Frame.Used(a5)
+checked
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; lowerTokens
+
+; A0=initialized writer Frame,A5=session. Run package PRVM over the unbound
+; logical prefix and pass its physical head index to the generic writer.
+; D0/CCR=status,D1=record bytes; preserves other registers.
+writeWithHeadPolicy	.block
+	bsr.w selectHeadPolicy
+	bne.w done
+	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #0
+	jsr writer.writeLine
+	.PACKING_WRITE_END d0, d1
+done
+	tst.l d0
+	rts
+	.bend  ; writeWithHeadPolicy
+
+; A0=writer Frame. Select its numeric head using the package PRVM policy;
+; no writer or binder runs. D0/CCR=status; other registers except D1 preserved.
+selectHeadPolicy	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.w #HEAD_WORK_BYTES, sp
+	movea.l a0, a4
+	move.l writer.Frame.Count(a4), d7
+	cmpi.l #TOKEN_CAPACITY, d7
+	bhi.w headBad
+	move.l d7, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	cmp.l writer.Frame.TokenBytes(a4), d0
+	bhi.w headBad
+	movea.l writer.Frame.Tokens(a4), a1
+	lea HEAD_TOKENS(sp), a2
+	lea HEAD_MAP(sp), a3
+	clr.l d5
+	clr.l d6
+	clr.w (a3)+
+headView
+	cmpi.l #2, d5
+	bcc.w headViewReady
+	cmp.l d7, d6
+	bcc.w headViewReady
+	moveq #1, d4
+	move.w writer.Token.Reserved(a1), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	bne.w headBad
+	move.w writer.Token.Reserved(a1), d0
+	andi.w #tokenizer.TOKEN_RECIPE_VALID, d0
+	beq.w headCopy
+	move.l writer.Token.Offset(a1), d0
+	cmp.l writer.Frame.LexemeBytes(a4), d0
+	bhi.w headBad
+	move.l writer.Frame.LexemeBytes(a4), d1
+	sub.l d0, d1
+	move.l writer.Token.Length(a1), d2
+	cmp.l d1, d2
+	bhi.w headBad
+	sub.l d2, d1
+	cmpi.l #2, d1
+	blo.w headBad
+	add.l d2, d0
+	movea.l writer.Frame.Lexemes(a4), a0
+	moveq #0, d4
+	move.b 0(a0, d0.l), d4
+	beq.w headBad
+	move.l d7, d0
+	sub.l d6, d0
+	cmp.l d0, d4
+	bhi.w headBad
+headCopy
+	move.l writer.Token.Kind(a1), d0
+	move.l d0, writer.Token.Kind(a2)
+	move.l writer.Token.Start(a1), d0
+	move.l d0, writer.Token.Start(a2)
+	move.l writer.Token.End(a1), d0
+	move.l d0, writer.Token.End(a2)
+	move.l writer.Token.Offset(a1), d0
+	move.l d0, writer.Token.Offset(a2)
+	move.l writer.Token.Length(a1), d0
+	move.l d0, writer.Token.Length(a2)
+	move.l d4, d0
+	subq.l #1, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	move.l writer.Token.End(a1, d0.l), d1
+	move.l d1, writer.Token.End(a2)
+	add.l d4, d6
+	move.w d6, (a3)+
+	addq.l #1, d5
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a2
+	add.l #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	adda.l d0, a1
+	bra.w headView
+headViewReady
+	lea HEAD_REQUEST(sp), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+headClear
+	clr.l (a1)+
+	dbra d0, headClear
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_OPASM_STATEMENT, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	moveq #0, d0
+	move.w writer.Frame.SourceLine(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LINE_NUM(a0)
+	lea HEAD_TOKENS(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_TOKEN_PTR(a0)
+	move.l d5, parser_abi.PRVM_FRAME_TOKEN_COUNT(a0)
+	move.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, parser_abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a0)
+	move.l writer.Frame.Lexemes(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LEXEME_PTR(a0)
+	move.l writer.Frame.LexemeBytes(a4), d0
+	move.l d0, parser_abi.PRVM_FRAME_LEXEME_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.HeadPolicy(a1), d0
+	adda.l d0, a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.HeadPolicyBytes(a1), d0
+	move.l d0, parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	lea HEAD_RESULTS(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #3*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	lea HEAD_DIAGNOSTIC(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_DIAGNOSTIC_PTR(a0)
+	move.l #64, parser_abi.PRVM_FRAME_DIAGNOSTIC_CAPACITY(a0)
+	lea HEAD_RESUME(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESUME_PTR(a0)
+	move.l #512, parser_abi.PRVM_FRAME_RESUME_CAPACITY(a0)
+	lea HEAD_EXPR(sp), a1
+	move.l a1, parser_abi.PRVM_FRAME_EXPR_REQUEST_PTR(a0)
+	move.l #parser_abi.PRVM_EXPR_REQUEST_RECORD_SIZE, parser_abi.PRVM_FRAME_EXPR_REQUEST_SIZE(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #16, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr parser_runtime.prvmRun68000
+	tst.l d0
+	bne.w headBad
+	cmp.l d5, d2
+	bhi.w headBad
+	add.w d2, d2
+	lea HEAD_MAP(sp), a1
+	move.w 0(a1, d2.w), d2
+	move.w d2, writer.Frame.HeadToken(a4)
+	moveq #0, d0
+	bra.w headDone
+headBad
+	moveq #1, d0
+	moveq #0, d1
+headDone
+	adda.w #HEAD_WORK_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; selectHeadPolicy
+
+; A5=session,A6=scratch,D1=count,D3=lexeme bytes. Write current lexical
+; rows with current binder; no semantic processing or source parsing.
+; D0/CCR=status,D1=writer record bytes; other registers preserved.
+writeTokens	.block
+	.HOTSPOT_ENTER #HOTSPOT_PACKED_WRITE
+	movem.l d2-d7/a0-a6, -(sp)
+	bsr.w configureWriter
+	.MEMORY_DETAIL_BEGIN #0
+	bsr.w writeWithHeadPolicy
+	.MEMORY_DETAIL_END #0
+	bne.w failed
+	bra.w done
+failed
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_PACKED_WRITE
+	rts
+	.bend  ; writeTokens
+
+; A0=TKVM rows,D0=count. Retain possible named substitution recipes
+; after the leading head tokens. This is capture metadata, not value binding.
+; D0/CCR=FRAGMENT_STRING or zero; other registers preserved.
+namedFragmentCandidate	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l d0, d1
+	cmpi.l #4, d1
+	blo.w ordinary
+	adda.w #2*tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #2, d1
+next
+	cmpi.l #2, d1
+	blo.w ordinary
+	cmpi.w #tokenizer.TK_KIND_DOT, writer.Token.Kind(a0)
+	bne.w advance
+	cmpi.w #tokenizer.TK_KIND_IDENTIFIER, writer.Token.Kind+tokenizer.TOKEN_RECORD_SIZE(a0)
+	beq.w selected
+advance
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #1, d1
+	bra.w next
+selected
+	moveq #FRAGMENT_STRING, d0
+	bra.w done
+ordinary
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; namedFragmentCandidate
+
+; A5=session,A6=scratch,D1=TKVM count,D3=lexeme bytes.
+; A0=writer Frame. Configure its borrowed input without writing or binding.
+; Other registers except D0 preserved; CCR unspecified.
+configureWriter	.block
+	movem.l a1, -(sp)
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a1
+	move.l a1, writer.Frame.Tokens(a0)
+	move.l #64*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	move.l Frame.Output(a5), writer.Frame.Output(a0)
+	move.l Frame.Capacity(a5), writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	move.l LINE_NUMBER(a6), d0
+	move.w d0, writer.Frame.SourceLine(a0)
+	move.l Frame.Source(a5), writer.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a1), d0
+	beq.w noStatePlan
+	add.l a1, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
+	move.l package.Header.TextPlan(a1), d0
+	add.l a1, d0
+	move.l d0, writer.Frame.TextPlan(a0)
+	move.l package.Header.TextPlanBytes(a1), writer.Frame.TextPlanBytes(a0)
+	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.HeadToken(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, writer.Frame.PackedMap(a0)
+	movea.l (sp)+, a1
+	rts
+	.bend  ; configureWriter
+
+FRAGMENT_NONE = 0
+FRAGMENT_NUMERIC = 1
+FRAGMENT_STRING = 2
+FRAGMENT_COMPOSED = 3; VM-invalid name annotation may require whole-line substitution
+; A0=TKVM rows,D0=count. D0/CCR=body fragment candidate role; other regs kept.
+; Numeric suffixes and invalid composed annotations require positional span
+; overlap later. All candidate kinds and annotations come from TKVM.
+bodyFragmentCandidate	.block
+	movem.l d1-d2/a0, -(sp)
+	move.l d0, d1
+	moveq #FRAGMENT_NONE, d2
+candidate
+	tst.l d1
+	beq.w done
+	move.w writer.Token.Reserved(a0), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	bne.w composedCandidate
+	cmpi.w #tokenizer.TK_KIND_STRING, writer.Token.Kind(a0)
+	beq.w stringCandidate
+	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a0)
+	bne.w next
+	cmpi.l #1, writer.Token.Length(a0)
+	bls.w next
+	tst.l d2
+	bne.w next
+	moveq #FRAGMENT_NUMERIC, d2
+next
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a0
+	subq.l #1, d1
+	bra.w candidate
+stringCandidate
+	cmpi.l #FRAGMENT_COMPOSED, d2
+	beq.w next
+	moveq #FRAGMENT_STRING, d2
+	bra.w next
+composedCandidate
+	moveq #FRAGMENT_COMPOSED, d2
+	bra.w next
+done
+	move.l d2, d0
+	movem.l (sp)+, d1-d2/a0
+	tst.l d0
+	rts
+	.bend  ; bodyFragmentCandidate
+
+; A5=session,A6=scratch,D1=TKVM count,D3=lexeme bytes.
+; D0/CCR=status,D2=1 retained body / 0 ordinary; other registers preserved.
+; Whole-line positional recipes own suffixes inside numeric or composed tokens.
+; Select them before an unexpanded operand reaches the ordinary writer. Only
+; the package-selected numeric head is bound; operands belong to FragmentLine.
+retainedFragmentBody	.block
+	movem.l d1/d3-d7/a0-a4, -(sp)
+	move.l d1, d7
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.hasOpen
+	beq.w ordinary
+	lea TOKENS(a6), a0
+	move.l d7, d0
+	bsr.w bodyFragmentCandidate
+	cmpi.l #FRAGMENT_NUMERIC, d0
+	beq.w candidateReady
+	cmpi.l #FRAGMENT_COMPOSED, d0
+	bne.w ordinary
+candidateReady
+	move.l d0, d4
+	moveq #0, d6
+	move.l CAPTURE_RECORD(a6), d0
+	beq.w physical
+	movea.l d0, a1
+	tst.l capture.Record.LineStatus(a1)
+	bne.w ordinary
+retainedProof
+	move.l capture.Record.LineHandle(a1), d6
+	beq.w bad
+	suba.w #memory.Block.Used+4, sp
+	jsr capture.planView
+	move.l a0, memory.Block.Pointer(sp)
+	move.l d0, memory.Block.Capacity(sp)
+	move.l d0, memory.Block.Used(sp)
+	movea.l sp, a0
+	move.l d6, d1
+	jsr macro_plans.recipeView
+retainedRows
+	move.l d0, d5
+	movea.l a1, a0
+	move.l d1, d0
+	move.l d2, d1
+	move.l d7, d2
+	tst.l d5
+	bne.w capturedProof
+	bsr.w retainedSuffixOverlap
+	move.l d0, d5
+capturedProof
+	adda.w #memory.Block.Used+4, sp
+	cmpi.l #macro_plans.RECIPE_INVALID, d5
+	beq.w bad
+	tst.l d5
+	bne.w ordinary
+	bra.w selected
+physical
+	; The physical entry uses the same PRVM recipe capture as retained input.
+	move.l d7, LINE_FRAME+writer.Frame.Count(a6)
+	bsr.w physicalLineRecipe
+	bne.w ordinary
+	move.l macro_plans.Frame.RecipeCount(a0), d0
+	movea.l macro_plans.Frame.RecipeEvents(a0), a0
+	moveq #0, d1
+	move.l d7, d2
+	bsr.w retainedSuffixOverlap
+	tst.l d0
+	bne.w ordinary
+selected
+	move.l d7, d1
+	bsr.w configureWriter
+	bsr.w selectHeadPolicy
+	bne.w bad
+	moveq #0, d4
+	move.w writer.Frame.HeadToken(a0), d4
+	cmp.l d7, d4
+	bhi.w bad
+	beq.w noHead
+	move.l d4, d0
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d0
+	lea TOKENS(a6), a1
+	adda.l d0, a1
+	addq.l #1, d4
+	cmpi.w #parser_abi.PRVM_TOKEN_KIND_DOT, writer.Token.Kind(a1)
+	bne.w headReady
+	addq.l #1, d4
+	bra.w headReady
+noHead
+	clr.l d4
+headReady
+	cmp.l d7, d4
+	bhi.w bad
+	lea LINE_FRAME(a6), a0
+	move.l d4, writer.Frame.Count(a0)
+	.PACKING_WRITE_BEGIN a6, TEMPLATE_STATE, LINE_FRAME, #1
+	jsr writer.writeLine
+	.PACKING_WRITE_END d0, d1
+	bne.w bad
+	; Retained operands have no packed representation yet. Their lexical
+	; boundaries map to the numeric head frontier until fragment expansion.
+	lea PACKED_MAP(a6), a1
+	move.l d4, d0
+	add.l d0, d0
+	adda.l d0, a1
+	move.l d7, d0
+	sub.l d4, d0
+mapTail
+	move.w d1, (a1)+
+	dbra d0, mapTail
+	move.l d7, LINE_FRAME+writer.Frame.Count(a6)
+	; Known/body calls and template headers keep their existing call/header
+	; descriptor owner. This path supplies ordinary retained body recipes.
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	tst.l d0
+	bne.w ordinary
+	tst.l d6
+	beq.w createPhysical
+	moveq #0, d4
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w append
+createPhysical
+	lea MACRO_FRAME(a6), a0
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
+	jsr macro_plans.create
+	bne.w bad
+	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
+append
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+	movea.l Frame.Output(a5), a0
+	andi.b #$ff-writer.FLAG_PLAN, writer.RecordHeader.Flags(a0)
+	ori.b #templates.LINE_PLAN_FLAG, writer.RecordHeader.Flags(a0)
+	move.b #templates.TOKEN_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
+	moveq #1, d2
+	moveq #0, d0
+	bra.w done
+ordinary
+	moveq #0, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #0, d2
+	moveq #1, d0
+done
+	movem.l (sp)+, d1/d3-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; retainedFragmentBody
+
+SUFFIX_MATCHED = 0
+SUFFIX_ABSENT = 1
+SUFFIX_INVALID = 2
+; Capture required substitution recipes and optional invocation facets.
+; Known nested calls keep their existing call recipes until that consumer moves.
+; Token kind is a VM result; no placeholder or quote grammar is inspected here.
+fragmentLinePlan	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	movea.l a2, a0
+	jsr templates.hasOpen
+	beq.w ready
+	jsr templates.openDef
+	bne.w bad
+	move.l a1, d0
+	beq.w ready
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	jsr templates.role
+	tst.l d0
+	bne.w ready
+	movea.l Frame.Output(a5), a0
+	cmpi.b #writer.RECORD_HEADER_BYTES-1, writer.RecordHeader.Length(a0)
+	beq.w ready  ; no substantive body token needs invocation facets
+	lea TOKENS(a6), a0
+	move.l LINE_FRAME+writer.Frame.Count(a6), d0
+	bsr.w bodyFragmentCandidate
+	tst.l d0
+	bne.w candidateReady
+	; Encoding-name formals must be rebound after textual substitution,
+	; even when the original line contains no string literal.
+	bsr.w textNameBody
+	tst.l d0
+	beq.w optionalCapture
+candidateReady
+	moveq #0, d7
+	cmpi.l #FRAGMENT_NUMERIC, d0
+	bne.w capture
+	moveq #1, d7  ; numeric candidates still require recipe overlap proof
+	move.l CAPTURE_RECORD(a6), d0
+	beq.w capture
+	movea.l d0, a0
+	cmpi.l #capture.LINE_ABSENT, capture.Record.LineStatus(a0)
+	bne.w capture
+	tst.l capture.Record.LineHandle(a0)
+	bne.w bad
+	bra.w optionalCapture  ; numeric text may still be a future statement capture
+optionalCapture
+	movea.l Frame.Output(a5), a0
+	btst #5, writer.RecordHeader.Flags(a0)
+	bne.w ready  ; a retained call plan already owns this line
+	moveq #2, d7  ; optional facets; no substitution requires retokenization
+capture
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_BIND
+	tst.l CAPTURE_RECORD(a6)
+	beq.w physicalCapture
+	moveq #0, d4  ; retained whole-line fragment recipe
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w selectedBodyPlan
+physicalCapture
+	.MEMORY_TEMPLATE_WORK #11, #1
+	bsr.w physicalLineRecipe
+	bne.w bad
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
+	jsr macro_plans.create
+	bne.w bad
+	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
+selectedBodyPlan
+	tst.l d7
+	beq.w appendCaptured
+	cmpi.l #2, d7
+	beq.w appendCaptured
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_SUFFIX
+	bsr.w numericSuffixPlan
+	cmpi.l #SUFFIX_ABSENT, d0
+	bne.w suffixSelected
+	moveq #2, d7
+	bra.w appendCaptured
+suffixSelected
+	tst.l d0
+	bne.w bad
+appendCaptured
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FRAGMENT_APPEND
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+	movea.l Frame.Output(a5), a0
+	andi.b #$ff-writer.FLAG_PLAN, writer.RecordHeader.Flags(a0)
+	ori.b #templates.LINE_PLAN_FLAG, writer.RecordHeader.Flags(a0)
+	move.b #templates.TOKEN_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
+	cmpi.l #2, d7
+	bne.w ready
+	move.b #templates.TOKEN_OPTIONAL_LINE_PLAN, writer.PlanToken.Kind-writer.PLAN_TOKEN_BYTES(a0, d1.l)
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; fragmentLinePlan
+
+; A5=session,A6=scratch. Return FRAGMENT_STRING for a shared text-name
+; envelope with a named first-operand formal, otherwise zero. Use the writer's
+; numeric head frontier and TKVM token kinds, never spelling lookup.
+; D0/CCR=result; other registers preserved.
+textNameBody	.block
+	movem.l d1-d3/a0-a1, -(sp)
+	moveq #0, d0
+	move.w LINE_FRAME+writer.Frame.HeadToken(a6), d0
+	addq.l #2, d0
+	move.l d0, d2
+	addq.l #2, d2
+	cmp.l LINE_FRAME+writer.Frame.Count(a6), d2
+	bhi.w ordinary
+	move.l d0, d2
+	mulu.w #tokenizer.TOKEN_RECORD_SIZE, d2
+	lea TOKENS(a6), a0
+	adda.l d2, a0
+	cmpi.w #tokenizer.TK_KIND_DOT, writer.Token.Kind(a0)
+	bne.w ordinary
+	cmpi.w #tokenizer.TK_KIND_IDENTIFIER, writer.Token.Kind+tokenizer.TOKEN_RECORD_SIZE(a0)
+	bne.w ordinary
+	add.l d0, d0
+	lea PACKED_MAP(a6), a1
+	moveq #0, d1
+	move.w 0(a1, d0.l), d1
+	cmp.l Frame.Capacity(a5), d1
+	bhi.w ordinary
+	move.l d1, d0
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.TextPlanBytes(a1), d1
+	adda.l package.Header.TextPlan(a1), a1
+	jsr text.nameRole
+	tst.l d0
+	bne.w ordinary
+	cmpi.l #1, d1
+	bne.w ordinary
+	moveq #FRAGMENT_STRING, d0
+	bra.w done
+ordinary
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a1
+	tst.l d0
+	rts
+	.bend  ; textNameBody
+
+; D1=owned whole-line plan,A6=scratch. D0/CCR=0 when a PRVM positional
+; substitution ends inside a TKVM numeric token,1 absent,2 invalid plan.
+; Other registers preserved; malformed owned plans never select packed fallback.
+; Lexical concatenation is selected by VM spans, never marker spelling.
+numericSuffixPlan	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.recipeView
+recipeReady
+	cmpi.l #macro_plans.RECIPE_ABSENT, d0
+	beq.w absent
+	tst.l d0
+	bne.w invalid
+	movea.l a1, a0
+	move.l d1, d0
+	move.l d2, d1
+	move.l LINE_FRAME+writer.Frame.Count(a6), d2
+	bsr.w numericSuffixOverlap
+	bra.w done
+absent
+	moveq #SUFFIX_ABSENT, d0
+	bra.w done
+invalid
+	moveq #SUFFIX_INVALID, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; numericSuffixPlan
+
+; A0=validated PRVM recipes,D0=count,D1=spelling base,D2=TKVM count,
+; A6=scratch. D0/CCR=SUFFIX_MATCHED/ABSENT; other regs preserved.
+; Used before publication and after binding; only VM spans select concatenation.
+numericSuffixOverlap	.block
+	move.l d3, -(sp)
+	moveq #FRAGMENT_NUMERIC, d3
+	bsr.w fragmentSuffixOverlap
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend  ; numericSuffixOverlap
+
+; Same proof ABI, D4=retained numeric/composed candidate role. Preserve D3.
+retainedSuffixOverlap	.block
+	move.l d3, -(sp)
+	move.l d4, d3
+	bsr.w fragmentSuffixOverlap
+	move.l (sp)+, d3
+	tst.l d0
+	rts
+	.bend  ; retainedSuffixOverlap
+
+; Existing span proof with D3 selecting the VM-owned token annotation/class.
+fragmentSuffixOverlap	.block
+	movem.l d1-d7/a0-a3, -(sp)
+	move.l d0, d7
+	move.l d1, d6
+	movea.l a0, a2
+recipe
+	tst.l d7
+	beq.w absent
+	cmpi.w #parser_abi.PRVM_RESULT_MACRO_POSITIONAL, macro_plans.Row.Kind(a2)
+	bne.w nextRecipe
+	move.l macro_plans.Row.SpellingEnd(a2), d5
+	sub.l d6, d5
+	lea TOKENS(a6), a3
+	move.l d2, d4
+numericToken
+	tst.l d4
+	beq.w nextRecipe
+	cmpi.l #FRAGMENT_COMPOSED, d3
+	beq.w composedToken
+	cmpi.w #tokenizer.TK_KIND_NUMBER, writer.Token.Kind(a3)
+	bne.w nextNumericToken
+	bra.w tokenSelected
+composedToken
+	move.w writer.Token.Reserved(a3), d0
+	andi.w #tokenizer.TOKEN_RECIPE_INVALID, d0
+	beq.w nextNumericToken
+tokenSelected
+	move.l writer.Token.Start(a3), d0
+	subq.l #1, d0  ; TKVM columns are one-based, recipe spans zero-based
+	cmp.l d0, d5
+	bls.w nextNumericToken
+	move.l writer.Token.End(a3), d0
+	subq.l #1, d0
+	cmp.l d0, d5
+	blo.w matched
+nextNumericToken
+	adda.w #tokenizer.TOKEN_RECORD_SIZE, a3
+	subq.l #1, d4
+	bra.w numericToken
+nextRecipe
+	adda.w #macro_plans.ROW_BYTES, a2
+	subq.l #1, d7
+	bra.w recipe
+matched
+	moveq #SUFFIX_MATCHED, d0
+	bra.w done
+absent
+	moveq #SUFFIX_ABSENT, d0
+done
+	movem.l (sp)+, d1-d7/a0-a3
+	tst.l d0
+	rts
+	.bend  ; fragmentSuffixOverlap
+
+; A0=session,A1=output,A2=definition,A4=invocation,D1=owned recipe handle.
+; Bind fragments, then let TKVM alone materialize and lex their logical stream.
+; Returns only a packed line. No original/expanded text enters writer interfaces.
+FragmentBindingPolicy	.struct
+Mode	.word ?
+BindingMode	.word ?
+.endstruct
+FRAGMENT_BINDING_POLICY_BYTES = FragmentBindingPolicy.BindingMode+2
+
+fragmentLine	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	suba.w #FRAGMENT_BINDING_POLICY_BYTES, sp
+	move.w Frame.PreviewMode(a5), FragmentBindingPolicy.Mode(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), FragmentBindingPolicy.BindingMode(sp)
+	; Substitution still interns stable numeric names in inactive records,
+	; but only selected records may publish semantic reference metadata.
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Active(a0)
+	bne.w bindingReady
+	move.w #1, Frame.PreviewMode(a5)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+bindingReady
+	move.l a1, -(sp)
+	suba.w #FRAGMENT_SCRATCH, sp
+	movea.l sp, a0
+	lea MACRO_PLANS(a6), a3
+	move.l a3, fragment_binding.Frame.Arena(a0)
+	move.l d1, fragment_binding.Frame.Plan(a0)
+	move.l templates.Def.HeaderPlan(a2), fragment_binding.Frame.Header(a0)
+	moveq #0, d0
+	move.w templates.Def.ParamCount(a2), d0
+	move.l d0, fragment_binding.Frame.FormalCount(a0)
+	lea templates.TEXT(a4), a3
+	move.l a3, fragment_binding.Frame.Text(a0)
+	lea templates.TEXT_END0(a4), a3
+	move.l a3, fragment_binding.Frame.TextEnds(a0)
+	moveq #0, d0
+	move.w templates.TEXT_BYTES(a4), d0
+	move.l d0, fragment_binding.Frame.TextBytes(a0)
+	lea templates.FULL_TEXT(a4), a3
+	move.l a3, fragment_binding.Frame.Full(a0)
+	moveq #0, d0
+	move.w templates.FULL_BYTES(a4), d0
+	move.l d0, fragment_binding.Frame.FullBytes(a0)
+	lea FRAGMENT_VIEWS(sp), a3
+	move.l a3, fragment_binding.Frame.Output(a0)
+	move.l #64*fragment_binding.FRAGMENT_BYTES, fragment_binding.Frame.Capacity(a0)
+	cmpi.w #templates.KIND_EXTERNAL, templates.Def.Kind(a2)
+	bne.w ordinaryFragments
+	jsr fragment_binding.runFragmentsLastNamed
+	bra.w fragmentsReady
+ordinaryFragments
+	jsr fragment_binding.runFragments
+fragmentsReady
+	bne.w bad
+	lea FRAGMENT_REQUEST(sp), a0
+	move.l a3, fragment_tokenizer.Frame.Fragments(a0)
+	move.l d2, fragment_tokenizer.Frame.Count(a0)
+	move.l d1, fragment_tokenizer.Frame.InputBytes(a0)
+	lea TOKENS(a6), a3
+	move.l a3, fragment_tokenizer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY, fragment_tokenizer.Frame.TokenCapacity(a0)
+	lea LEXEMES(a6), a3
+	move.l a3, fragment_tokenizer.Frame.Lexemes(a0)
+	move.l #LEXEME_BYTES, fragment_tokenizer.Frame.LexemeCapacity(a0)
+	move.l PROGRAM(a6), fragment_tokenizer.Frame.Program(a0)
+	move.l PROGRAM_BYTES(a6), fragment_tokenizer.Frame.ProgramBytes(a0)
+	jsr fragment_tokenizer.run
+	bne.w bad
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a3
+	move.l a3, writer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a3
+	move.l a3, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	move.l FRAGMENT_SCRATCH(sp), writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	moveq #0, d0
+	move.w templates.CallFrame.CallLine(a4), d0
+	move.w d0, LINE_FRAME+writer.Frame.SourceLine(a6)
+	lea LINE_FRAME(a6), a0
+	clr.l writer.Frame.Source(a0)
+	clr.l writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a3
+	move.w package.Header.CpuDirective(a3), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a3), d0
+	beq.w noStatePlan
+	add.l a3, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
+	move.l package.Header.TextPlan(a3), d0
+	add.l a3, d0
+	move.l d0, writer.Frame.TextPlan(a0)
+	move.l package.Header.TextPlanBytes(a3), writer.Frame.TextPlanBytes(a0)
+	move.w package.Header.ResDirective(a3), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a3), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.HeadToken(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
+	lea PACKED_MAP(a6), a3
+	move.l a3, writer.Frame.PackedMap(a0)
+	bsr.w writeWithHeadPolicy
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	adda.w #FRAGMENT_SCRATCH+4, sp
+	move.w FragmentBindingPolicy.Mode(sp), Frame.PreviewMode(a5)
+	move.w FragmentBindingPolicy.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	adda.w #FRAGMENT_BINDING_POLICY_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; fragmentLine
+
+; Bind a VM-owned call/header plan while initial lexical spans are still live.
+; A5=session frame,A6=scratch. D0/CCR=status; other registers preserved.
+initialPlan	.block
+	movem.l d1-d7/a0-a4, -(sp)
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Active(a0)
+	beq.w ready
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	tst.l d0
+	beq.w ready
+	move.l d0, d4
+	cmpi.l #2, d4
+	blo.w templateRoleReady
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Deferred(a0)
+	bne.w bad
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	bne.w bad
+templateRoleReady
+	tst.l CAPTURE_RECORD(a6)
+	beq.w physicalPlan
+	bsr.w bindCapturedPlan
+	bne.w bad
+	bra.w appendCaptured
+physicalPlan
+	bsr.w sourceDescriptors
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.Frame.Count(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.Frame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	clr.l macro_plans.Frame.RecipeEvents(a0)
+	clr.l macro_plans.Frame.RecipeCount(a0)
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	move.l a0, -(sp)
+	movea.l a1, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
+	beq.w planReady
+	cmpi.l #1, d4
+	bne.w planReady
+	bsr.w captureFragments
+	bne.w bad
+planReady
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
+	jsr macro_plans.create
+	bne.w bad
+	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
+appendCaptured
+	lea LINE_FRAME(a6), a0
+	jsr writer.appendPlan
+	bne.w bad
+ready
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; initialPlan
+
+; A5=session,A6=scratch,D4=role (zero selects string-line candidate).
+; Select only now, after the replay writer has rebound names in current scope.
+; D0/CCR=status,D1=normal handle; others kept.
+bindCapturedPlan	.block
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_CONTEXT 0, #1
+	.WORK_COUNT lazy_work.PLAN_BIND, #1
+	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
+	.HOTSPOT_ENTER #HOTSPOT_PLAN_BIND
+	movem.l d2-d7/a0-a4, -(sp)
+	movea.l CAPTURE_RECORD(a6), a4
+	; Existing gated scalar copies preserve CCR/registers, without borrowed views.
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanRole, d4
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanLineStatus, capture.Record.LineStatus(a4)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanLineHandle, capture.Record.LineHandle(a4)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBytes, #0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedBefore, MACRO_PLANS+memory.Block.Used(a6)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBindStatus, #-1
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBoundHandle, #0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedAfter, MACRO_PLANS+memory.Block.Used(a6)
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanSelectedHandle, #0
+	moveq #0, d7
+	tst.l d4
+	beq.w lineCandidate
+	cmpi.l #1, d4
+	bne.w headerCandidate
+	tst.l capture.Record.CallStatus(a4)
+	bne.w bad
+	move.l capture.Record.CallHandle(a4), d6
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.hasOpen
+	beq.w candidateReady
+	tst.l capture.Record.CallRecipeStatus(a4)
+	bne.w bad
+	moveq #1, d7
+	bra.w candidateReady
+headerCandidate
+	tst.l capture.Record.HeaderStatus(a4)
+	bne.w bad
+	move.l capture.Record.HeaderHandle(a4), d6
+	bra.w candidateReady
+lineCandidate
+	tst.l capture.Record.LineStatus(a4)
+	bne.w bad
+	move.l capture.Record.LineHandle(a4), d6
+	moveq #1, d7
+candidateReady
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanSelectedHandle, d6
+	suba.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
+	movea.l a4, a1
+	jsr capture.planView
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBytes, d0
+	move.l a0, memory.Block.Pointer(sp)
+	move.l d0, memory.Block.Capacity(sp)
+	move.l d0, memory.Block.Used(sp)
+	lea memory.Block.Used+4(sp), a0
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.BindFrame.Arena(a0)
+	move.l sp, macro_plans.BindFrame.Source(a0)
+	move.l d6, macro_plans.BindFrame.Handle(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.BindFrame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.BindFrame.TokenCount(a0)
+	move.w d7, macro_plans.BindFrame.IncludeRecipes(a0)
+	clr.w macro_plans.BindFrame.Reserved(a0)
+	jsr macro_plans.bind
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBindStatus, d0
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanBoundHandle, d1
+	.ASSEMBLY_FAILURE_STAGE CapturedPlanUsedAfter, MACRO_PLANS+memory.Block.Used(a6)
+	adda.w #memory.Block.Used+4+macro_plans.BIND_FRAME_BYTES, sp
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
+	movem.l (sp)+, d2-d7/a0-a4
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_PLAN_BIND
+	rts
+	.bend  ; bindCapturedPlan
+
+; A5=session,A6=scratch. Capture a whole physical line through the shared
+; fragment PRVM. A0=initialized macro Frame,D0/CCR=status; others preserved.
+; Packed offsets are bound only after the selected numeric head is written.
+physicalLineRecipe	.block
+	movem.l d1-d2/a1-a2, -(sp)
+	lea MACRO_EVENTS(a6), a1
+	movea.l a1, a0
+	moveq #macro_plans.ROW_BYTES/4-1, d0
+clearRow
+	clr.l (a0)+
+	dbra d0, clearRow
+	move.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Row.PackedEnd(a1)
+	move.l Frame.SourceBytes(a5), macro_plans.Row.SpellingEnd(a1)
+	lea MACRO_FRAME(a6), a0
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l #1, macro_plans.Frame.Count(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.Frame.Arena(a0)
+	move.l Frame.Source(a5), macro_plans.Frame.Source(a0)
+	move.l Frame.SourceBytes(a5), macro_plans.Frame.SourceBytes(a0)
+	lea PACKED_MAP(a6), a1
+	move.l a1, macro_plans.Frame.PackedMap(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), macro_plans.Frame.TokenCount(a0)
+	bsr.w captureFragments
+	movem.l (sp)+, d1-d2/a1-a2
+	tst.l d0
+	rts
+	.bend  ; physicalLineRecipe
+
+; A5=session,A6=scratch,D4=call(1) or header role. Existing shared PRVM
+; reads the physical line only during direct preparation or initial capture.
+; D0/CCR=status,D1=event count; other registers preserved.
+sourceDescriptors	.block
+	movem.l d2-d7/a0-a4, -(sp)
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clearRequest
+	clr.l (a1)+
+	dbra d0, clearRequest
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_MACRO_DESCRIPTORS, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l LINE_NUMBER(a6), parser_abi.PRVM_FRAME_LINE_NUM(a0)
+	move.l Frame.Source(a5), parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	move.l Frame.SourceBytes(a5), parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	lea TOKENS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_TOKEN_PTR(a0)
+	move.l LINE_FRAME+writer.Frame.Count(a6), parser_abi.PRVM_FRAME_TOKEN_COUNT(a0)
+	move.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, parser_abi.PRVM_FRAME_TOKEN_RECORD_SIZE(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroCall(a1), d1
+	move.l package.Header.MacroCallBytes(a1), d2
+	cmpi.l #1, d4
+	beq.w selectedProgram
+	move.l package.Header.MacroHeader(a1), d1
+	move.l package.Header.MacroHeaderBytes(a1), d2
+selectedProgram
+	adda.l d1, a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	move.l d2, parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	.MEMORY_TEMPLATE_WORK #10, #1
+	jsr macro_runtime.run
+	bne.w bad
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; sourceDescriptors
+
+; Cache package-selected fragments only for nested calls captured in a template.
+; A0=initial plan frame,A5=session,A6=scratch. D0/CCR=status; preserves others.
+captureFragments	.block
+	.include "frontend_fragment_req.i"
+	.bend  ; captureFragments
+
+; A0=session,A1=complete packed line,A2=expanded call list,D1=list bytes,
+; D2=captured call-plan handle. Lex the list through TKVM before selecting the
+; generated packed/spelling descriptors; substitutions may change token shape.
+; D0/CCR=status,D1=record bytes including its new plan handle; others preserved.
+generatedPlan	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l a2, a3
+	move.l d1, d6
+	movea.l Frame.Scratch(a5), a6
+	bsr.w relexGeneratedCall
+	bne.w bad
+	move.l d1, d7
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clearRequest
+	clr.l (a1)+
+	dbra d0, clearRequest
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_PACKED_MACRO, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l a4, parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	move.l d7, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroPackedBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	adda.l package.Header.MacroPacked(a1), a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #65536, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr macro_runtime.run
+	bne.w bad
+	move.l d1, d5
+	lea MACRO_SPELL_FRAME(a6), a0
+	move.l PROGRAM(a6), spelling.Frame.TokenProgram(a0)
+	move.l PROGRAM_BYTES(a6), spelling.Frame.TokenBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.MacroSpellingBytes(a1), spelling.Frame.MacroBytes(a0)
+	adda.l package.Header.MacroSpelling(a1), a1
+	move.l a1, spelling.Frame.MacroProgram(a0)
+	move.l a3, spelling.Frame.Source(a0)
+	move.l d6, spelling.Frame.SourceBytes(a0)
+	lea MACRO_SPELL_SCRATCH(a6), a1
+	move.l a1, spelling.Frame.Scratch(a0)
+	move.l #spelling.SCRATCH_BYTES, spelling.Frame.ScratchBytes(a0)
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, spelling.Frame.Result(a0)
+	move.l #64*parser_abi.PRVM_RESULT_RECORD_SIZE, spelling.Frame.ResultBytes(a0)
+	jsr spelling.run
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+	move.l d1, macro_plans.GeneratedFrame.SpellingCount(a0)
+	move.l d5, macro_plans.GeneratedFrame.PackedCount(a0)
+	lea MACRO_PLANS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.Arena(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.PackedEvents(a0)
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, macro_plans.GeneratedFrame.SpellingEvents(a0)
+	move.l a3, macro_plans.GeneratedFrame.Source(a0)
+	move.l d6, macro_plans.GeneratedFrame.SourceBytes(a0)
+	move.l d7, macro_plans.GeneratedFrame.PackedBytes(a0)
+	clr.l macro_plans.GeneratedFrame.RecipeEvents(a0)
+	clr.l macro_plans.GeneratedFrame.RecipeCount(a0)
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	move.l a0, -(sp)
+	movea.l a1, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
+	beq.w generatedReady
+	; A generated call may itself become part of a captured definition.
+	suba.l #macro_plans.FRAME_BYTES, sp
+	movea.l sp, a0
+	lea MACRO_SPELL_EVENTS(a6), a1
+	move.l a1, macro_plans.Frame.Events(a0)
+	move.l a3, macro_plans.Frame.Source(a0)
+	bsr.w captureFragments
+	tst.l d0
+	bne.w generatedCaptureFailed
+	lea MACRO_FRAME(a6), a1
+	move.l macro_plans.Frame.RecipeEvents(a0), macro_plans.GeneratedFrame.RecipeEvents(a1)
+	move.l macro_plans.Frame.RecipeCount(a0), macro_plans.GeneratedFrame.RecipeCount(a1)
+generatedCaptureFailed
+	adda.l #macro_plans.FRAME_BYTES, sp
+	tst.l d0
+	bne.w bad
+	lea MACRO_FRAME(a6), a0
+generatedReady
+	.WORK_TEMPLATE_CONTEXT a6, TEMPLATE_STATE
+	.WORK_BOUND_BEGIN MACRO_PLANS+memory.Block.Used(a6)
+	jsr macro_plans.createGenerated
+	bne.w bad
+	.WORK_BOUND_END MACRO_PLANS+memory.Block.Used(a6)
+	lea LINE_FRAME(a6), a0
+	move.l a4, writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.w d7, writer.Frame.Used(a0)
+	jsr writer.appendPlan
+	bra.w done
+bad
+	moveq #1, d0
+	moveq #0, d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; generatedPlan
+
+; Relex the original-spelling recipe's expanded argument list, then retain
+; the already bound call head. The VM selects all argument token boundaries.
+; A0=session,A1=packed call,A2=list,D1=list bytes,D2=plan handle.
+; D0/CCR=status,D1=combined packed bytes; preserves other registers.
+relexGeneratedCall	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	suba.l #GENERATED_BYTES, sp
+	movea.l a0, a5
+	movea.l a1, a4
+	movea.l a2, a3
+	move.l d1, d6
+	move.l d2, d4
+	movea.l Frame.Scratch(a5), a6
+	moveq #0, d7
+	move.b (a4), d7
+	addq.l #1, d7
+	lea MACRO_PLANS(a6), a0
+	move.l d4, d1
+	jsr macro_plans.resolve
+	bne.w generatedRelexBad
+	lea macro_plans.HEADER_BYTES(a1), a1
+	cmpi.w #parser_abi.PRVM_RESULT_MACRO_LINE, macro_plans.Row.Kind(a1)
+	bne.w generatedRelexBad
+	move.l macro_plans.Row.PackedEnd(a1), d5
+	cmpi.l #4, d5
+	blo.w generatedRelexBad
+	cmp.l d7, d5
+	bhi.w generatedRelexBad
+	move.b #32, GENERATED_SPACE(sp)
+	lea GENERATED_FRAGMENTS(sp), a0
+	lea GENERATED_SPACE(sp), a1
+	move.l a1, fragment_tokenizer.Fragment.Bytes(a0)
+	move.l #1, fragment_tokenizer.Fragment.Length(a0)
+	lea fragment_tokenizer.FRAGMENT_BYTES(a0), a1
+	move.l a3, fragment_tokenizer.Fragment.Bytes(a1)
+	move.l d6, fragment_tokenizer.Fragment.Length(a1)
+	lea GENERATED_REQUEST(sp), a0
+	lea GENERATED_FRAGMENTS(sp), a1
+	move.l a1, fragment_tokenizer.Frame.Fragments(a0)
+	move.l #2, fragment_tokenizer.Frame.Count(a0)
+	move.l d6, d0
+	addq.l #1, d0
+	move.l d0, fragment_tokenizer.Frame.InputBytes(a0)
+	lea TOKENS(a6), a1
+	move.l a1, fragment_tokenizer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY, fragment_tokenizer.Frame.TokenCapacity(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, fragment_tokenizer.Frame.Lexemes(a0)
+	move.l #LEXEME_BYTES, fragment_tokenizer.Frame.LexemeCapacity(a0)
+	move.l PROGRAM(a6), fragment_tokenizer.Frame.Program(a0)
+	move.l PROGRAM_BYTES(a6), fragment_tokenizer.Frame.ProgramBytes(a0)
+	jsr fragment_tokenizer.run
+	bne.w generatedRelexBad
+	lea LINE_FRAME(a6), a0
+	lea TOKENS(a6), a1
+	move.l a1, writer.Frame.Tokens(a0)
+	move.l #TOKEN_CAPACITY*20, writer.Frame.TokenBytes(a0)
+	move.l d1, writer.Frame.Count(a0)
+	lea LEXEMES(a6), a1
+	move.l a1, writer.Frame.Lexemes(a0)
+	move.l d3, writer.Frame.LexemeBytes(a0)
+	lea GENERATED_RECORD(sp), a1
+	move.l a1, writer.Frame.Output(a0)
+	move.l #256, writer.Frame.Capacity(a0)
+	move.l #bind, writer.Frame.Binder(a0)
+	move.l a6, writer.Frame.Context(a0)
+	move.w 2(a4), writer.Frame.SourceLine(a0)
+	clr.l writer.Frame.Source(a0)
+	clr.l writer.Frame.SourceBytes(a0)
+	movea.l Frame.Package(a5), a1
+	move.w package.Header.CpuDirective(a1), writer.Frame.NameDirective(a0)
+	move.l package.Header.StatePlan(a1), d0
+	beq.w noStatePlan
+	add.l a1, d0
+noStatePlan
+	move.l d0, writer.Frame.StatePlan(a0)
+	move.l package.Header.TextPlan(a1), d0
+	add.l a1, d0
+	move.l d0, writer.Frame.TextPlan(a0)
+	move.l package.Header.TextPlanBytes(a1), writer.Frame.TextPlanBytes(a0)
+	move.w package.Header.ResDirective(a1), writer.Frame.WidthDirective(a0)
+	move.w package.Header.EmitDirective(a1), writer.Frame.DataWidthDirective(a0)
+	clr.w writer.Frame.HeadToken(a0)
+	move.l #bindMember, writer.Frame.MemberBinder(a0)
+	clr.l writer.Frame.PackedMap(a0)
+	; PRVM already selected this operand list; there is no statement head.
+	jsr writer.writeValues
+	bne.w generatedRelexBad
+	move.l d1, d2
+	subq.l #4, d2
+	move.l d5, d3
+	add.l d2, d3
+	cmpi.l #256, d3
+	bhi.w generatedRelexBad
+	lea GENERATED_RECORD+4(sp), a0
+	lea 0(a4, d5.l), a1
+generatedRelexCopy
+	tst.l d2
+	beq.w generatedRelexDone
+	move.b (a0)+, (a1)+
+	subq.l #1, d2
+	bra.w generatedRelexCopy
+generatedRelexDone
+	move.l d3, d1
+	subq.l #1, d3
+	move.b d3, (a4)
+	moveq #0, d0
+	bra.w generatedRelexExit
+generatedRelexBad
+	moveq #1, d0
+	moveq #0, d1
+generatedRelexExit
+	adda.l #GENERATED_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; relexGeneratedCall
+
+; Emit the next already-tokenized line of a pending segment invocation.
+; A0=Frame. Used=0 when the invocation is exhausted; the physical source
+; line counter remains at the following line. D0/CCR=status.
+	.pub
+; A0=session. D0=current template depth; other registers preserved. CCR unspecified.
+expansionDepth	.block
+	move.l a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	moveq #0, d0
+	adda.l #TEMPLATE_STATE, a1
+	move.w templates.State.Depth(a1), d0
+	movea.l (sp)+, a1
+	rts
+	.bend  ; expansionDepth
+
+; A0=session,D0=cursor operation,D1=seek offset. Same outputs as templates.cursor.
+; Active template source owns its body cursor; parent invocations remain suspended.
+expansionCursor	.block
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.cursor
+	movea.l (sp)+, a0
+	tst.l d0
+	rts
+	.bend  ; expansionCursor
+
+; A0=session,A1=numeric writer. D0=existing template role, no semantic action.
+templateRole	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.role
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; templateRole
+
+; A0=session,D1=template body offset,A2=disjoint MAX_LINE output.
+; D0/CCR=status,A1=preview,D1=next body offset. Other registers preserved.
+; No semantic scope action; shared template substitution and binder own the view.
+previewExpansion	.block
+	movem.l d2-d7/a0/a2-a6, -(sp)
+	suba.w #PREVIEW_BYTES, sp
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l a2, d7
+	move.l Frame.Output(a5), Preview.Output(sp)
+	move.l Frame.Used(a5), Preview.Used(sp)
+	move.l Frame.Origin(a5), Preview.Origin(sp)
+	move.l Frame.NameCount(a5), Preview.Names(sp)
+	move.l LINE_NUMBER(a6), Preview.Line(sp)
+	move.w Frame.RootFile(a5), Preview.Root(sp)
+	move.w Frame.PreviewMode(a5), Preview.Mode(sp)
+	move.w SCOPE_STATE+layout.State.FirstBound(a6), Preview.FirstBound(sp)
+	move.w SCOPE_STATE+layout.State.FirstExplicit(a6), Preview.FirstExplicit(sp)
+	move.w SCOPE_STATE+layout.State.PreviewBinding(a6), Preview.BindingMode(sp)
+	move.w #1, SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w #1, Frame.PreviewMode(a5)
+	move.l a2, Frame.Output(a5)
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l a2, a1
+	lea SCOPE_STATE(a6), a2
+	jsr templates.preview
+	move.l d0, d6
+	move.l Preview.Output(sp), Frame.Output(a5)
+	move.l Preview.Used(sp), Frame.Used(a5)
+	move.l Preview.Origin(sp), Frame.Origin(a5)
+	move.l Preview.Names(sp), Frame.NameCount(a5)
+	move.l Preview.Line(sp), LINE_NUMBER(a6)
+	move.w Preview.Root(sp), Frame.RootFile(a5)
+	move.w Preview.BindingMode(sp), SCOPE_STATE+layout.State.PreviewBinding(a6)
+	move.w Preview.Mode(sp), Frame.PreviewMode(a5)
+	move.w Preview.FirstBound(sp), SCOPE_STATE+layout.State.FirstBound(a6)
+	move.w Preview.FirstExplicit(sp), SCOPE_STATE+layout.State.FirstExplicit(a6)
+	movea.l d7, a1
+	move.l d6, d0
+	adda.w #PREVIEW_BYTES, sp
+	movem.l (sp)+, d2-d7/a0/a2-a6
+	tst.l d0
+	rts
+	.bend  ; previewExpansion
+
+; A0=session. A1=current preparation scope; other registers preserved.
+scopeState	.block
+	movea.l Frame.Scratch(a0), a1
+	adda.l #SCOPE_STATE, a1
+	rts
+	.bend  ; scopeState
+
+; A0=session. A1=current conditional state; other registers preserved.
+conditionalState	.block
+	movea.l Frame.Scratch(a0), a1
+	adda.l #CONDITION_STATE, a1
+	rts
+	.bend  ; conditionalState
+
+nextExpansion	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	clr.l Frame.Used(a5)
+	tst.w Frame.SourcePending(a5)
+	bne.w nextDone
+	movea.l Frame.Scratch(a5), a6
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l Frame.Output(a5), a1
+	lea SCOPE_STATE(a6), a2
+	bsr.w nextTemplate
+	bne.w nextFailed
+	tst.l d1
+	beq.w nextDone
+	bsr.w expandRecord
+	bra.w nextDone
+nextFailed
+	moveq #1, d0
+nextDone
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; nextExpansion
+
+	.priv
+; A0=template state,A1=output,A2=scope; A5=session.
+; Protect parent frames suspended by a selected source cursor. Same ABI as next.
+nextTemplate	.block
+	move.l a1, -(sp)
+	move.w Frame.ExpansionFloor(a5), templates.State.Floor(a0)
+	clr.w templates.State.NeedLexical(a0)
+	movea.l a6, a1
+	adda.l #STATEMENT_STATE, a1
+	tst.w statements.State.Count(a1)
+	beq.w lexicalModeReady
+	move.w #1, templates.State.NeedLexical(a0)
+lexicalModeReady
+	movea.l (sp)+, a1
+	jmp templates.next
+	.bend  ; nextTemplate
+
+; A5=Frame,A6=Scratch. The output holds one generated packed record.
+; Reenter template lookup before ordinary preparation; nested calls push a
+; child frame and resume the parent when that child drains.
+expandRecord	.block
+generatedLoop
+	.WORK_TEMPLATE_FLOOR a6, TEMPLATE_STATE, Frame.ExpansionFloor(a5)
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	move.l templates.State.Origin(a0), Frame.Origin(a5)
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.startLine
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	tst.w templates.State.LexicalReady(a0)
+	beq.w templateLookup
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_STATEMENT_CALL
+	bsr.w statementInvokeExpanded
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	cmpi.w #statement_execution.ACTION_EXPANDED, d1
+	beq.w nextGenerated
+templateLookup
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a2
+	moveq #0, d0
+	movea.l a6, a1
+	adda.l #CONDITION_STATE, a1
+	move.w conditionals.State.Active(a1), d0
+	movea.l a6, a1
+	adda.l #TEMPLATE_STATE, a1
+	jsr templates.line
+	bne.w failed
+	tst.w d1
+	beq.w prepareGenerated
+nextGenerated
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	movea.l Frame.Output(a5), a1
+	lea SCOPE_STATE(a6), a2
+	bsr.w nextTemplate
+	bne.w failed
+	tst.l d1
+	bne.w generatedLoop
+	clr.l Frame.Used(a5)
+	moveq #0, d0
+	rts
+prepareGenerated
+	bsr.w processRecord
+	bne.w failed
+	tst.w Frame.SourcePending(a5)
+	bne.w sourceSuspended
+	tst.l Frame.Used(a5)
+	beq.w nextGenerated  ; streamed actions publish directly; keep draining the call
+	moveq #0, d0  ; return status flags after testing the published byte count
+	rts
+failed
+	moveq #1, d0
+	rts
+sourceSuspended
+	moveq #0, d0
+	rts
+	.bend  ; expandRecord
+
+; A5=Frame,A6=Scratch, Frame.Output contains one writer record. Apply the
+; normal numeric selection, binding and expression path to original or expanded
+; records. This routine does not tokenize source or advance the physical line.
+processRecord	.block
+	.LAZY_COUNT lazy_audit.PROCESS, #1
+	.WORK_COUNT lazy_work.PROCESS, #1
+	.HOTSPOT_ENTER #HOTSPOT_RECORD_PROCESS
+	.HOTSPOT_COUNT HOTSPOT_PROCESS_RECORDS, #1
+	clr.l Frame.Used(a5)
+	; Source-control publications need the same current-module ownership as
+	; ordinary records before they can return through the consumed path.
+	clr.l Frame.GraphBefore(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w sourceGraphReady
+	moveq #0, d0
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a6), d0
+	move.l d0, Frame.GraphBefore(a5)
+sourceGraphReady
+	move.l Frame.SourceControl(a5), d0
+	beq.w sourceControlReady
+	movea.l d0, a2
+	movea.l a5, a0
+	movea.l Frame.Output(a5), a1
+	.HOTSPOT_CALL #HOTSPOT_SOURCE_CONTROL, (a2)
+	bne.w failed
+	tst.l d1
+	beq.w sourceControlReady
+	.HOTSPOT_COUNT HOTSPOT_SOURCE_CONSUMED, #1
+	lea SCOPE_STATE(a6), a0
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_COUNT, scopes.count
+	move.l d0, Frame.NameCount(a5)
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+	bne.w failed
+	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
+	rts
+sourceControlReady
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DECLARATION
+	movea.l Frame.Output(a5), a0
+	.HOTSPOT_COUNT_IF_EQ_BYTE writer.RecordHeader.Length(a0), #writer.RECORD_HEADER_BYTES-1, HOTSPOT_PROCESS_EMPTY_INPUTS, #1
+	; Scope-private macro records are not portable declaration requests.
+	btst #7, 1(a0)
+	bne.w declarationReady
+	movea.l Frame.Package(a5), a1
+	.HOTSPOT_CALL #HOTSPOT_DECLARATION, declaration.normalize
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+declarationReady
+	.WORK_EFFECT Frame.Output(a5)
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	lea SCOPE_STATE(a6), a2
+	adda.l #scopes.SCRATCH_BYTES, a2
+	.MEMORY_DETAIL_BEGIN #2
+	move.w Frame.SourceIteration(a5), conditionals.State.Materializing(a2)
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	beq.w sourceGuardMode
+	clr.w conditionals.State.Materializing(a2)
+sourceGuardMode
+	.HOTSPOT_CALL #HOTSPOT_CONDITIONAL, conditionals.line
+	.MEMORY_DETAIL_END #2
+	bne.w failed
+	tst.l d1
+	bne.w activeLine
+	movea.l Frame.Output(a5), a0
+	moveq #0, d0
+	move.w conditionals.State.PublishBytes(a2), d0
+	beq.w consumedWithoutLabel
+	; One consumed control becomes its VM-validated numeric label record.
+	; Ordinary binding owns lexical identity, readonly checks and normalization.
+	addi.w #writer.RECORD_HEADER_BYTES-1, d0
+	move.b d0, (a0)
+	clr.b 1(a0)
+	bra.w activeLine
+consumedWithoutLabel
+	.HOTSPOT_COUNT HOTSPOT_CONDITION_CONSUMED, #1
+	move.b #3, (a0)
+	clr.b 1(a0)
+	bra.w conditionReady
+activeLine
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	move.w conditionals.State.Deferred(a0), SCOPE_STATE+layout.State.Deferred(a6)
+	tst.w conditionals.State.Deferred(a0)
+	beq.w activePreparation
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.deferredLine
+	bne.w failed
+	btst #scopes.LEXICAL_BLOCK_BIT, 1(a0)
+	bne.w bindLine
+	; Null destination rejects selected metadata before applying any event.
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	suba.l a3, a3
+	moveq #0, d1
+	.HOTSPOT_CALL #HOTSPOT_METADATA, metadata.check
+	bne.w failed
+activePreparation
+	movea.l Frame.Output(a5), a0
+	; Private macro hygiene markers belong to scopes, not portable PRVM records.
+	move.b 1(a0), d0
+	andi.b #scopes.LEXICAL_BLOCK, d0
+	bne.w bindLine
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	movea.l Frame.Metadata(a5), a3
+	moveq #0, d1
+	move.w Frame.RootFile(a5), d1
+	.HOTSPOT_CALL #HOTSPOT_METADATA, metadata.check
+	bne.w failed
+	tst.l d1
+	bne.w conditionReady
+bindLine
+	movea.l Frame.Output(a5), a0
+	; Invocation hygiene is a scope-private record. scopes.line removes its
+	; marker before normal label normalization; operand roles do not apply.
+	btst #scopes.LEXICAL_BLOCK_BIT, 1(a0)
+	bne.w scopeLine
+	lea SCOPE_STATE(a6), a1
+	move.l Frame.Capacity(a5), d0
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONFIGURATION
+	.HOTSPOT_CALL #HOTSPOT_CONFIGURATION, scopes.configurationStatement
+	bne.w failed
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	.MEMORY_DETAIL_BEGIN #2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_OPERAND_ROLES
+	.HOTSPOT_CALL #HOTSPOT_OPERAND_BIND, operand_binding.line
+	.MEMORY_DETAIL_END #2
+	bne.w failed
+scopeLine
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_SCOPE
+	movea.l Frame.Output(a5), a0
+	lea SCOPE_STATE(a6), a1
+	move.l Frame.Capacity(a5), d0
+	.MEMORY_DETAIL_BEGIN #2
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_LINE, scopes.line
+	.MEMORY_DETAIL_END #2
+	bne.w failed
+	movea.l Frame.Output(a5), a0
+	moveq #0, d0
+	move.b (a0), d0
+	cmpi.w #9, d0
+	blo.w scalarCaptured
+	cmpi.b #writer.TOKEN_STRUCT_DECLARATION, 8(a0)
+	beq.w captureValue
+	cmpi.b #34, 8(a0)
+	beq.w captureValue
+	cmpi.b #writer.TOKEN_CONDITIONAL_DECLARATION, 8(a0)
+	beq.w captureValue
+	cmpi.b #writer.TOKEN_MUTABLE_DECLARATION, 8(a0)
+	beq.w captureValue
+	cmpi.b #writer.TOKEN_UPDATE_FIRST, 8(a0)
+	blo.w scalarCaptured
+	cmpi.b #writer.TOKEN_UPDATE_LAST, 8(a0)
+	bhi.w scalarCaptured
+captureValue
+	lea SCOPE_STATE(a6), a1
+	.MEMORY_DETAIL_BEGIN #2
+	.HOTSPOT_CALL #HOTSPOT_VALUE_CAPTURE, imports.captureValue
+	.MEMORY_DETAIL_END #2
+	bne.w failed
+scalarCaptured
+conditionReady
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_FILE
+	.MEMORY_DETAIL_BEGIN #3
+	.HOTSPOT_BSR #HOTSPOT_FILE_LINE, fileLine
+	bne.w failed
+	tst.l d1
+	bne.w graphLineDone  ; callback published its numeric data and graph bytes
+	.MEMORY_STAGE #4
+	movea.l Frame.Output(a5), a0
+	movea.l Frame.Package(a5), a1
+	lea SCOPE_STATE(a6), a2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_DATA
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	bne.w dataPrepared
+	.HOTSPOT_CALL #HOTSPOT_DATA_PREPARE, data_prepare.check
+	bne.w failed
+dataPrepared
+	movea.l Frame.Output(a5), a0
+	lea PREPARED_LINE(a6), a1
+	movea.l Frame.Package(a5), a2
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_EXPRESSION
+	.MEMORY_PREPARATION_INPUT PreparationInput, Frame.Capacity(a5)
+	movea.l a6, a4
+	adda.l #CONDITION_STATE, a4
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	sub.w Frame.SourceIteration(a5), d0
+	or.w conditionals.State.Deferred(a4), d0
+	beq.w prepareOrdinary
+	.HOTSPOT_CALL #HOTSPOT_EXPRESSION_PREPARE, prepare.lineUnfolded
+	bra.w preparedExpression
+prepareOrdinary
+	.HOTSPOT_CALL #HOTSPOT_EXPRESSION_PREPARE, prepare.line
+preparedExpression
+	.ASSEMBLY_FAILURE_STAGE PreparationInput+PreparationPosition.Status, d0
+	bne.w failed
+	.MEMORY_STAGE #0
+	cmp.l Frame.Capacity(a5), d1
+	bhi.w failed
+	.HOTSPOT_ENTER #HOTSPOT_PREPARED_COPY
+	lea PREPARED_LINE(a6), a0
+	movea.l Frame.Output(a5), a1
+	move.l d1, d0
+copyPrepared
+	move.b (a0)+, (a1)+
+	subq.l #1, d0
+	bne.w copyPrepared
+	.HOTSPOT_LEAVE #HOTSPOT_PREPARED_COPY
+	move.l d1, Frame.Used(a5)
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w graphLineDone
+	move.l Frame.Used(a5), d0
+	move.l Frame.GraphBefore(a5), d1
+	movea.l Frame.Scratch(a5), a1
+	moveq #0, d2
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+	.HOTSPOT_CALL #HOTSPOT_GRAPH_LINE, graph.line
+	bne.w failed
+graphLineDone
+	.HOTSPOT_COUNT_IF_EQ Frame.Used(a5), #writer.RECORD_HEADER_BYTES, HOTSPOT_PROCESS_EMPTY_OUTPUTS, #1
+	lea SCOPE_STATE(a6), a0
+	.HOTSPOT_CALL #HOTSPOT_SCOPE_COUNT, scopes.count
+	move.l d0, Frame.NameCount(a5)
+	moveq #0, d0
+	bra.w done
+failed
+	moveq #1, d0
+done
+	tst.l d0
+	bne.w checked
+	movea.l a5, a0
+	bsr.w checkLexicalSession
+checked
+	tst.l d0
+	beq.w checkedOk
+	clr.l Frame.Used(a5)
+checkedOk
+	.MEMORY_DETAIL_END #3
+	tst.l d0
+	.HOTSPOT_LEAVE #HOTSPOT_RECORD_PROCESS
+	rts
+	.bend  ; processRecord
+	.pub
+; Publish one already-numeric data record from a preparation-only file callback.
+; A0=session,A1=record,D0=bytes. No binding, text parsing or expression compilation
+; occurs here. Updates Used and graph ownership; caller then appends Output.
+; D0/CCR=status; preserves other registers. Input/output may coincide.
+data	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	cmpi.l #4, d0
+	blo.w bad
+	cmpi.l #writer.MAX_LINE, d0
+	bhi.w bad
+	cmp.l Frame.Capacity(a5), d0
+	bhi.w bad
+	move.l d0, Frame.Used(a5)
+	movea.l Frame.Output(a5), a2
+copy
+	move.b (a1)+, (a2)+
+	subq.l #1, d0
+	bne.w copy
+	movea.l Frame.Graph(a5), a0
+	move.l a0, d0
+	beq.w good
+	move.l Frame.Used(a5), d0
+	move.l Frame.GraphBefore(a5), d1
+	movea.l Frame.Scratch(a5), a1
+	moveq #0, d2
+	move.w SCOPE_STATE+scopes.MODULE_STATE+modules.State.Active(a1), d2
+	jsr graph.line
+	bra.w done
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; data
+	; A0=session,D0=bound iterator ID,D1/D2=scalar low/high. Prepare its
+; numeric initializer through the normal shared assignment expression compiler.
+ScalarInitializer	.struct
+Length	.byte ?
+Flags	.byte ?
+Line	.word ?
+Name	.res writer.NAME_TOKEN_BYTES
+Declaration	.byte ?
+Value	.res writer.WIDE_NUMBER_BYTES
+.endstruct
+SCALAR_INITIALIZER_BYTES = ScalarInitializer.Value+writer.WIDE_NUMBER_BYTES
+sourceScalar	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	movea.l Frame.Output(a5), a0
+	move.b #SCALAR_INITIALIZER_BYTES-1, ScalarInitializer.Length(a0)
+	andi.b #writer.FLAG_INDENT, ScalarInitializer.Flags(a0)
+	clr.b ScalarInitializer.Name+writer.NameToken.Kind(a0)
+	move.w d0, ScalarInitializer.Name+writer.NameToken.Id(a0)
+	clr.b ScalarInitializer.Name+writer.NameToken.Qualifier(a0)
+	move.b #writer.TOKEN_CONSTANT_DECLARATION, ScalarInitializer.Declaration(a0)
+	move.b #writer.TOKEN_WIDE_NUMBER, ScalarInitializer.Value+writer.WideNumberToken.Kind(a0)
+	move.l d2, ScalarInitializer.Value+writer.WideNumberToken.High(a0)
+	move.l d1, ScalarInitializer.Value+writer.WideNumberToken.Low(a0)
+	lea PREPARED_LINE(a6), a1
+	movea.l Frame.Package(a5), a2
+	jsr prepare.line
+	bne.w done
+	; Publish through the shared numeric-data owner so graph spans count the
+	; initializer exactly as they count the following selected body records.
+	move.l d1, d0
+	movea.l a5, a0
+	lea PREPARED_LINE(a6), a1
+	bsr.w data
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; sourceScalar
+
+; A0=session,A1=numeric writer. D0/CCR=status,D1=selected action (0 absent).
+; Read-only classification through the same FilePlan owner; no I/O callback.
+classifyFile	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	move.l Frame.Output(a5), -(sp)
+	move.l a1, Frame.Output(a5)
+	bsr.w runFilePlan
+	move.l (sp)+, Frame.Output(a5)
+	tst.l d0
+	bne.w done
+	tst.l d1
+	beq.w done
+	move.l MACRO_EVENTS+parser_abi.PRVM_FILE_ACTION(a6), d1
+done
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; classifyFile
+	.priv
+runFilePlan	.block
+	lea MACRO_REQUEST(a6), a0
+	movea.l a0, a1
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE/4-1, d0
+clear
+	clr.l (a1)+
+	dbra d0, clear
+	move.l #parser_abi.PRVM_MAGIC_OPRP, parser_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #parser_abi.PRVM_ABI_VERSION_V1, parser_abi.PRVM_FRAME_ABI_VERSION(a0)
+	move.w #parser_abi.PRVM_REQUEST_FRAME_SIZE, parser_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #parser_abi.PRVM_ENTRY_KIND_PACKED_FILE, parser_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l Frame.Output(a5), parser_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	movea.l Frame.Output(a5), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	lea MACRO_REQUEST(a6), a0
+	move.l d0, parser_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	movea.l Frame.Package(a5), a1
+	move.l package.Header.FilePlanBytes(a1), parser_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	adda.l package.Header.FilePlan(a1), a1
+	move.l a1, parser_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	lea MACRO_EVENTS(a6), a1
+	move.l a1, parser_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #parser_abi.PRVM_RESULT_RECORD_SIZE, parser_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #parser_abi.PRVM_PARSER_CONTRACT_VERSION_V2, parser_abi.PRVM_FRAME_PARSER_CONTRACT_VERSION(a0)
+	move.l #1024, parser_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	moveq #parser_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	jsr macro_runtime.run
+	rts
+	.bend  ; runFilePlan
+	.priv
+; PRVM selects a file action from active packed records; native code only
+; delegates the resulting bounded path/prefix view to caller-owned I/O.
+; A5=session,A6=scratch. D0/CCR=status,D1=handled; preserves other registers.
+fileLine	.block
+	movem.l d2-d7/a0-a4, -(sp)
+	bsr.w runFilePlan
+	bne.w bad
+	tst.l d1
+	beq.w good
+	cmpi.l #1, d1
+	bne.w bad
+	movea.l a6, a0
+	adda.l #CONDITION_STATE, a0
+	tst.w conditionals.State.Deferred(a0)
+	bne.w bad  ; deferred branches cannot perform preparation-time file I/O
+	cmpi.l #parser_abi.FILE_ACTION_SOURCE, MACRO_EVENTS+parser_abi.PRVM_FILE_ACTION(a6)
+	bne.w fileSelected
+	move.w SCOPE_STATE+layout.State.LoopDepth(a6), d0
+	cmp.w Frame.SourceIteration(a5), d0
+	bne.w bad  ; unmaterialized loop bodies cannot authorize source acquisition
+fileSelected
+	move.l Frame.FileInclude(a5), d0
+	beq.w bad  ; stand-alone frontends must explicitly supply file I/O
+	movea.l d0, a2
+	movea.l a5, a0
+	lea MACRO_EVENTS(a6), a1
+	jsr (a2)
+	bne.w bad
+	clr.l Frame.Used(a5)
+	moveq #1, d1
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d2-d7/a0-a4
+	tst.l d0
+	rts
+	.bend  ; fileLine
+	.pub
+; Finish one source file without discarding identities shared by the session.
+; A0=Frame,D0=nonzero to require explicit modules for file content.
+; D0/CCR=status, others preserved. Successful EOF resets local lines.
+endFile	.block
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_TEMPLATE
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a0), a1
+	movea.l a1, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.endFile
+	bne.w done
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_CONDITIONAL
+	lea SCOPE_STATE(a1), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.endFile
+	bne.w done
+	lea SCOPE_STATE(a1), a0
+	adda.l #scopes.SCRATCH_BYTES, a0
+	jsr conditionals.begin
+	bne.w done
+	.ASSEMBLY_FAILURE_STAGE PreparationStage, #PREP_SCOPE
+	lea SCOPE_STATE(a1), a0
+	jsr scopes.endFile
+	bne.w done
+	movea.l Frame.Graph(a2), a0
+	move.l a0, d1
+	beq.w resetFileLine
+	jsr graph.endFile
+	bne.w done
+resetFileLine
+	movea.l a2, a0
+	bsr.w checkLexicalSession
+	bne.w done
+	move.l #1, LINE_NUMBER(a1)
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; endFile
+; A0=Frame,A1=caller-owned span output,D0=bytes. Dependency-first spans
+; refer to original packed records and original file ordinals. D0=0,D1=span
+; count; D0=2,D1=missing module index+1; D0=1,D1=0 for invalid graph.
+; CCR reflects D0; other registers preserved.
+orderGraph	.block
+	movem.l a0-a3, -(sp)
+	movea.l a0, a3
+	movea.l Frame.Graph(a3), a0
+	move.l a0, d1
+	beq.w orderBad
+	movea.l Frame.Scratch(a3), a2
+	lea SCOPE_STATE(a2), a2
+	movea.l a2, a3
+	movea.l a1, a2
+	movea.l a3, a1
+	jsr graph.order
+	bra.w orderDone
+orderBad
+	moveq #1, d0
+	moveq #0, d1
+orderDone
+	movem.l (sp)+, a0-a3
+	tst.l d0
+	rts
+	.bend  ; orderGraph
+; Finalize scoped identities before lexical scratch is released. A0=Frame,
+; A1=packed records,D0=record bytes. D0/CCR=status; other registers preserved.
+complete	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a1, a6
+	move.l d0, d7
+	bsr.w completeBegin
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeLayouts
+	bne.w done
+	bsr.w completeLayoutsEnd
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeOutputs
+	bne.w done
+	bsr.w completeBindings
+	bne.w done
+	movea.l a6, a1
+	move.l d7, d0
+	bsr.w completeRecords
+	bne.w done
+	bsr.w completeEnd
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; complete
+
+; Staged completion uses the same phases as complete: Begin, all Layouts
+; batches, LayoutsEnd, all Outputs batches, Bindings, all Records batches, End.
+; A0=Frame throughout; batch APIs additionally take A1=mutable complete records,
+; D0=bytes. No batch view survives a call. D0/CCR=status; others preserved.
+completeBegin	.block
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Metadata(a0), a0
+	jsr metadata.complete
+	bne.w done
+	movea.l Frame.Scratch(a2), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.finishBegin
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeBegin
+
+completeLayouts	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finishLayouts
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeLayouts
+
+completeLayoutsEnd	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	lea SCOPE_STATE(a2), a0
+	jsr scopes.finishLayoutsEnd
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeLayoutsEnd
+
+completeOutputs	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finishOutputs
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeOutputs
+
+completeBindings	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	lea SCOPE_STATE(a2), a0
+	jsr scopes.finishBindings
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeBindings
+
+completeRecords	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a1
+	jsr scopes.finishRecords
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeRecords
+
+completeEnd	.block
+	movem.l a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l Frame.Scratch(a0), a0
+	adda.l #SCOPE_STATE, a0
+	jsr scopes.finishEnd
+	bne.w done
+	; Final member acquisition may add identities after the last source line.
+	jsr scopes.count
+	move.l d0, Frame.NameCount(a2)
+	moveq #0, d0
+done
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; completeEnd
+; A0=Frame. D0=serialized table/payload bytes,D1=parameter count.
+; Other registers preserved. Preparation scratch remains live.
+parameterBytes	.block
+	move.l a0, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	lea SCOPE_STATE(a0), a0
+	lea scopes.IMPORT_STATE(a0), a0
+	moveq #0, d1
+	move.w imports.PARAM_COUNT(a0), d1
+	move.l d1, d0
+	mulu.w #imports.PARAM_BYTES, d0
+	add.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d0
+	movea.l (sp)+, a0
+	rts
+	.bend  ; parameterBytes
+; A0=Frame,A1=destination,D0=exact serialized bytes. Copy numeric table and
+; immutable payload before scratch release. Compound offsets are payload-relative.
+; D0/CCR=status; other registers preserved. No runtime pointers are serialized.
+copyParameters	.block
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a0
+	lea SCOPE_STATE(a0), a0
+	lea scopes.IMPORT_STATE(a0), a0
+	moveq #0, d1
+	move.w imports.PARAM_COUNT(a0), d1
+	mulu.w #imports.PARAM_BYTES, d1
+	move.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d2
+	add.l d1, d2
+	cmp.l d0, d2
+	bne.w parametersBad
+	movea.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Pointer(a0), a2
+	move.l imports.PARAM_OWNER+values.Owner.Arena+memory.Block.Used(a0), d2
+	tst.l d1
+	beq.w payload
+	lea imports.PARAMS(a0), a0
+parametersCopy
+	move.b (a0)+, (a1)+
+	subq.l #1, d1
+	bne.w parametersCopy
+payload
+	tst.l d2
+	beq.w parametersDone
+payloadCopy
+	move.l (a2)+, (a1)+
+	subq.l #4, d2
+	bne.w payloadCopy
+parametersDone
+	moveq #0, d0
+	bra.w parametersExit
+parametersBad
+	moveq #1, d0
+parametersExit
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	rts
+	.bend  ; copyParameters
+; A0=Frame,A1=ordered prepared records,D0=bytes. Index numeric block spans
+; in a retired name-store block, before lexical scratch is released.
+; D0/CCR=status,D1=span count; all other registers preserved.
+indexBlocks	.block
+	movem.l a0-a2, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	move.l a2, d1
+	beq.w indexBad
+	; Retire all name pages before reusing First as the numeric index block.
+	lea SCOPE_STATE+layout.LEXICAL_STATE(a2), a0
+	jsr lexical.retireNames
+	lea SCOPE_STATE+scopes.ARENA(a2), a0
+	jsr nameStore.release
+	clr.l SCOPE_STATE+layout.State.ArenaUsed(a2)
+	movea.l a1, a0
+	lea SCOPE_STATE+scopes.ARENA+nameStore.State.First(a2), a1
+	jsr blocks.index
+	bra.w indexDone
+indexBad
+	moveq #0, d1
+	moveq #1, d0
+indexDone
+	movem.l (sp)+, a0-a2
+	tst.l d0
+	rts
+	.bend  ; indexBlocks
+; A0=Frame,A1=ordered records,D0=bytes,D1=indexed span count. Select blocks
+; from numeric references while the preparation metadata and graph still exist.
+; D0/CCR=status; other registers preserved.
+selectBlocks	.block
+	movem.l d2/a0-a4, -(sp)
+	movea.l Frame.Scratch(a0), a2
+	movea.l Frame.Package(a0), a4
+	movea.l Frame.Graph(a0), a3
+	move.l a3, d2
+	beq.w selectBad
+	movea.l a1, a0
+	lea SCOPE_STATE(a2), a2
+	movea.l scopes.ARENA+nameStore.State.First+memory.Block.Pointer(a2), a1
+	jsr blocks.select
+	bra.w selectDone
+selectBad
+	moveq #1, d0
+selectDone
+	movem.l (sp)+, d2/a0-a4
+	tst.l d0
+	rts
+	.bend  ; selectBlocks
+; A0=already begun Frame with its readable immutable package and live scratch.
+; Restore this session's package grammar control after another session ends.
+; Rebind scratch callbacks to this Frame address after descriptor moves/swaps;
+; a copied Frame must be activated before its scratch invokes the frontend.
+; Does not reset symbols, templates or lexical state. D0/CCR=status;
+; other registers preserved. No control-table pointer outlives its package.
+activate	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a0), a6
+	movea.l a6, a1
+	move.l a1, d0
+	beq.w bad
+	tst.l PROGRAM(a1)
+	beq.w bad
+	movea.l Frame.Package(a0), a2
+	move.l a2, d0
+	beq.w bad
+	move.l a5, SESSION_FRAME(a6)
+	move.l a5, TEMPLATE_STATE+templates.State.ParserContext(a6)
+	movea.l a2, a0
+	adda.l package.Header.ExpressionPlan(a2), a0
+	move.l package.Header.ExpressionPlanBytes(a2), d0
+	movea.l a6, a1
+	adda.l #EXPRESSION_WORK, a1
+	move.l #expression.WORKSPACE_BYTES, d1
+	jsr expression.configure
+	moveq #0, d0
+	move.w package.Header.BuiltinLenName(a2), d0
+	jsr expression.configureBuiltin
+	adda.l package.Header.Tokenizer(a2), a2
+	bsr.w activateControl
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; activate
+
+; End a streaming session. A0=Frame. Clears scratch-resident pointers and resets
+; grammar control state before the caller frees scratch. D0=0. Preserves other
+; registers; CCR reflects D0.
+finish	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	moveq #0, d7
+	movea.l Frame.Scratch(a0), a6
+	move.l a6, d0
+	beq.w resetControl
+	bsr.w checkLexicalSession
+	move.l d0, d7
+	movea.l a6, a0
+	adda.l #STATEMENT_STATE, a0
+	jsr statement_session.finish
+	movea.l a6, a0
+	adda.l #STATEMENT_EXECUTION, a0
+	jsr statement_execution.finish
+	movea.l a6, a0
+	adda.l #TEMPLATE_STATE, a0
+	jsr templates.finish
+	lea MACRO_PLANS(a6), a0
+	jsr macro_plans.finish
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.release
+	clr.l PROGRAM(a6)
+	clr.l PROGRAM_BYTES(a6)
+	clr.l PACKAGE_BASE(a6)
+	clr.l DICTIONARY_COUNT(a6)
+	clr.l PACKAGE_END(a6)
+	lea LINE_FRAME(a6), a1
+	moveq #10-1, d0
+clearFrame
+	clr.l (a1)+
+	dbra d0, clearFrame
+resetControl
+	suba.l a0, a0
+	suba.l a1, a1
+	moveq #0, d0
+	moveq #0, d1
+	jsr expression.configure
+	moveq #-1, d0
+	jsr expression.configureBuiltin
+	moveq #0, d0
+	jsr control.tkvmSetStepBudget68000
+	moveq #0, d0
+	moveq #0, d1
+	suba.l a0, a0
+	jsr control.tkvmSetProgramStateTable68000
+	move.l d7, d0
+	movem.l (sp)+, d1-d7/a0-a6
+	rts
+	.bend  ; finish
+	.priv
+; A0=frontend Frame. D0/CCR=sticky lexical/dependency status; others kept.
+; Check before publication or release so boolean fallbacks cannot hide failure.
+checkLexicalSession	.block
+	movem.l a0-a1, -(sp)
+	movea.l Frame.Scratch(a0), a1
+	move.l a1, d0
+	beq.w done
+	tst.w SCOPE_STATE+layout.State.DependencyFailed(a1)
+	beq.w lexicalStatus
+	moveq #1, d0
+	bra.w done
+lexicalStatus
+	lea SCOPE_STATE+layout.LEXICAL_STATE(a1), a0
+	jsr lexical.check
+done
+	movem.l (sp)+, a0-a1
+	tst.l d0
+	rts
+	.bend  ; checkLexicalSession
+
+; Validate only the package surfaces consumed by this frontend. Execution has
+; independent bounds checks for candidate/program tables.
+configure	.block
+	movea.l Frame.Package(a5), a0
+	bsr.w scratchSize
+	bne.w bad
+	movea.l Frame.Package(a5), a4
+	cmpi.l #package.MAGIC, package.Header.Magic(a4)
+	bne.w bad
+	move.l package.Header.Bytes(a4), d7
+	cmpi.l #HEADER_BYTES, d7
+	blo.w bad
+	move.l a4, d0
+	add.l d7, d0
+	bcs.w bad
+	move.l d0, PACKAGE_END(a6)
+	movea.l a4, a2
+	jsr state.validate
+	bne.w bad
+	move.l package.Header.ExpressionPlan(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	btst #0, d0
+	bne.w bad
+	move.l package.Header.RuntimeBytes(a4), d1
+	cmp.l d7, d1
+	bhi.w bad
+	sub.l d0, d1
+	bcs.w bad
+	move.l package.Header.ExpressionPlanBytes(a4), d2
+	beq.w bad
+	cmpi.l #65535, d2
+	bhi.w bad
+	cmp.l d1, d2
+	bhi.w bad
+	lea 0(a4, d0.l), a0
+	move.l d2, d0
+	movea.l a6, a1
+	adda.l #EXPRESSION_WORK, a1
+	move.l #expression.WORKSPACE_BYTES, d1
+	jsr expression.configure
+	moveq #0, d0
+	move.w package.Header.BuiltinLenName(a4), d0
+	jsr expression.configureBuiltin
+	bsr.w validateMacroPrograms
+	bne.w bad
+	bsr.w validateMemberBindings
+	bne.w bad
+	moveq #0, d0
+	move.w package.Header.NameCount(a4), d0
+	move.l d0, NEXT_ID(a6)
+	tst.w package.Header.BuiltinReserved(a4)
+	bne.w bad
+	move.w package.Header.BuiltinLenName(a4), d1
+	cmp.w d0, d1
+	bhs.w bad
+	move.l package.Header.Dictionary(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	cmp.l d7, d0
+	bhi.w bad
+	movea.l a4, a2
+	adda.l d0, a2
+	move.l a4, PACKAGE_BASE(a6)
+	move.l package.Header.DictionaryCount(a4), d6
+	move.l d6, DICTIONARY_COUNT(a6)
+	movea.l a6, a3
+	adda.l #SCRATCH_BYTES, a3
+	moveq #0, d3
+dictLoop
+	tst.l d6
+	beq.w indexDictionary
+	move.l PACKAGE_END(a6), d0
+	sub.l a2, d0
+	cmpi.l #package.DICTIONARY_ENTRY_BYTES, d0
+	blo.w bad
+	cmpi.b #package.DICTIONARY_ROLE_ALLOWED, package.DictionaryEntry.Roles(a2)
+	bhi.w bad
+	moveq #0, d1
+	move.w (a2), d1
+	beq.w bad
+	moveq #0, d2
+	move.w 2(a2), d2
+	cmp.l NEXT_ID(a6), d2
+	bhs.w bad
+	btst #package.DICTIONARY_BUILTIN_BIT, package.DictionaryEntry.Roles(a2)
+	beq.w dictionaryNext
+	cmp.w package.Header.BuiltinLenName(a4), d2
+	bne.w bad
+	tst.b package.DictionaryEntry.Qualifier(a2)
+	bne.w bad
+	addq.l #1, d3
+dictionaryNext
+	addi.l #6, d1
+	addq.l #1, d1
+	andi.l #$fffffffe, d1
+	cmp.l d0, d1
+	bhi.w bad
+	move.l a2, d2
+	sub.l a4, d2
+	move.l d2, Node.Entry(a3)
+	addq.l #8, a3
+	adda.l d1, a2
+	subq.l #1, d6
+	bra.w dictLoop
+; Insert backwards so duplicate folded spellings retain original first-match order.
+indexDictionary
+	cmpi.l #1, d3
+	bne.w bad
+	move.l DICTIONARY_COUNT(a6), d6
+indexLoop
+	tst.l d6
+	beq.w configureTokenizer
+	subq.l #8, a3
+	movea.l a4, a2
+	adda.l Node.Entry(a3), a2
+	moveq #0, d0
+	move.w (a2), d0
+	lea 6(a2), a0
+	bsr.w hash
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	adda.l d0, a1
+	move.l (a1), Node.Next(a3)
+	move.l a3, d0
+	sub.l a6, d0
+	move.l d0, (a1)
+	subq.l #1, d6
+	bra.w indexLoop
+configureTokenizer
+	move.l package.Header.Tokenizer(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	cmp.l d7, d0
+	bhi.w bad
+	sub.l d0, d7
+	move.l package.Header.TokenizerBytes(a4), d6
+	cmp.l d7, d6
+	bhi.w bad
+	cmpi.l #16, d6
+	blo.w bad
+	lea 0(a4, d0.l), a2
+	cmpi.w #1, (a2)
+	bne.w bad
+	moveq #0, d4
+	move.w 4(a2), d4
+	beq.w bad
+	moveq #0, d5
+	move.w 2(a2), d5
+	cmp.l d4, d5
+	bhs.w bad
+	move.l d4, d0
+	lsl.l #2, d0
+	addi.l #12, d0
+	cmp.l d6, d0
+	bhs.w bad
+	sub.l d0, d6
+	move.l d6, PROGRAM_BYTES(a6)
+	lea 0(a2, d0.l), a0
+	move.l a0, PROGRAM(a6)
+	lea 12(a2), a0
+	move.l d4, d0
+checkStates
+	move.l (a0)+, d1
+	cmp.l d6, d1
+	bhs.w bad
+	subq.l #1, d0
+	bne.w checkStates
+	bsr.w activateControl
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; configure
+
+; A2=validated package tokenizer header. Install its shared TKVM control.
+; D0/CCR=status; clobbers D1/A0, other registers preserved.
+activateControl	.block
+	move.l 8(a2), d0
+	ble.w bad
+	jsr control.tkvmSetStepBudget68000
+	lea 12(a2), a0
+	moveq #0, d0
+	move.w 4(a2), d0
+	moveq #0, d1
+	move.w 2(a2), d1
+	jsr control.tkvmSetProgramStateTable68000
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; activateControl
+
+; The five package-selected macro programs live in the preparation region.
+; A4=capsule, D7=complete capsule size; D0/CCR=status, other registers preserved.
+validateMacroPrograms	.block
+	movem.l d1-d3/a0, -(sp)
+	cmpi.w #2, package.Header.MacroVersion(a4)
+	bne.w bad
+	move.w package.Header.ForDirective(a4), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	move.w package.Header.EndforDirective(a4), d0
+	cmp.w package.Header.NameCount(a4), d0
+	bhs.w bad
+	cmp.w package.Header.ForDirective(a4), d0
+	beq.w bad
+	move.l package.Header.RuntimeBytes(a4), d3
+	cmpi.l #HEADER_BYTES, d3
+	blo.w bad
+	cmp.l d7, d3
+	bhi.w bad
+	lea package.Header.MacroCall(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroHeader(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroPacked(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroSpelling(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MacroFragments(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.FilePlan(a4), a0
+	bsr.w region
+	bne.w bad
+	lea package.Header.MetadataPlan(a4), a0
+	bsr.w region
+	bne.w bad
+	move.l package.Header.MetadataPlan(a4), d0
+	lea 0(a4, d0.l), a0
+	move.l package.Header.MetadataPlanBytes(a4), d0
+	jsr metadata_vm.validate
+	bne.w bad
+	; The loop envelope belongs to the retained grammar region.
+	move.l d7, -(sp)
+	move.l d3, d7
+	move.l #HEADER_BYTES, d3
+	lea package.Header.LoopPlan(a4), a0
+	bsr.w region
+	bne.w retainedDone
+	lea package.Header.BranchPlan(a4), a0
+	bsr.w region
+	bne.w retainedDone
+	lea package.Header.TextPlan(a4), a0
+	bsr.w region
+retainedDone
+	move.l (sp)+, d7
+	bra.w done
+region
+	move.l (a0), d0
+	cmp.l d3, d0
+	blo.w badRegion
+	cmp.l d7, d0
+	bhi.w badRegion
+	move.l 4(a0), d1
+	ble.w badRegion
+	move.l d7, d2
+	sub.l d0, d2
+	cmp.l d2, d1
+	bhi.w badRegion
+	moveq #0, d0
+	rts
+badRegion
+	moveq #1, d0
+	rts
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; validateMacroPrograms
+
+; Validate the contextual member table once, before callbacks can read it.
+; A4=capsule,D7=complete size; D0/CCR=status; other registers preserved.
+validateMemberBindings	.block
+	movem.l d1-d3/a0, -(sp)
+	move.l package.Header.MemberBindingCount(a4), d1
+	cmpi.l #65535, d1
+	bhi.w bad
+	move.l package.Header.MemberBindings(a4), d0
+	cmpi.l #HEADER_BYTES, d0
+	blo.w bad
+	btst #0, d0
+	bne.w bad
+	move.l d1, d2
+	lsl.l #3, d2
+	add.l d0, d2
+	bcs.w bad
+	cmp.l package.Header.RuntimeBytes(a4), d2
+	bhi.w bad
+	lea 0(a4, d0.l), a0
+next
+	tst.l d1
+	beq.w good
+	move.w package.MemberBinding.Name(a0), d2
+	cmp.w package.Header.NameCount(a4), d2
+	bhs.w bad
+	move.w package.MemberBinding.Field(a0), d2
+	cmp.w package.Header.NameCount(a4), d2
+	bhs.w bad
+	tst.w package.MemberBinding.Reserved(a0)
+	bne.w bad
+	adda.w #package.MEMBER_BINDING_BYTES, a0
+	subq.l #1, d1
+	bra.w next
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0
+	tst.l d0
+	rts
+	.bend  ; validateMemberBindings
+
+	.pub
+; A0=session,A1=validated immutable capture record. D0/CCR=assignment hint1/0.
+; Translate bounded TKVM punctuation or a dictionary name; shared PRVM owns
+; operator recognition. The capture remains immutable and unbound.
+; All other registers preserved; no binding, values or source mutation.
+updateRole	.block
+	movem.l d1-d4/a0-a3, -(sp)
+	subq.l #8, sp
+	movea.l a0, a3
+	movea.l a1, a2
+	moveq #0, d4
+	move.b capture.Record.Count(a1), d4
+	cmpi.l #2, d4
+	blo.w absent
+	lea capture.HEADER_BYTES(a1), a0
+	cmpi.w #1, writer.Token.Kind(a0)
+	bhi.w absent
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
+	subq.l #1, d4
+	cmpi.w #1, writer.Token.Kind(a0)
+	bls.w namedOperator
+	cmpi.l #3, d4
+	bls.w countReady
+	moveq #3, d4
+countReady
+	movea.l sp, a2
+	move.l d4, d3
+	subq.w #1, d3
+kind
+	move.w writer.Token.Kind(a0), d0
+	cmpi.w #255, d0
+	bhi.w absent
+	move.b d0, (a2)+
+	adda.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, a0
+	dbra d3, kind
+classify
+	movea.l Frame.Package(a3), a1
+	move.l package.Header.DeclarationPlan(a1), d0
+	adda.l d0, a1
+	movea.l sp, a0
+	move.l d4, d0
+	jsr declaration_parser.classifyAssignment
+	bra.w done
+namedOperator
+	cmpi.l #2, d4
+	blo.w absent
+	moveq #0, d4
+	move.w writer.Token.Kind+parser_abi.PRVM_TOKEN_RECORD_SIZE(a0), d4
+	tst.w writer.Token.Reserved(a0)
+	bne.w absent
+	move.l writer.Token.Offset(a0), d1
+	move.l capture.Record.LexemeBytes(a2), d2
+	sub.l d1, d2
+	bcs.w absent
+	move.l writer.Token.Length(a0), d0
+	cmp.l d0, d2
+	blo.w absent
+	moveq #0, d2
+	move.b capture.Record.Count(a2), d2
+	mulu.w #parser_abi.PRVM_TOKEN_RECORD_SIZE, d2
+	adda.l #capture.HEADER_BYTES, a2
+	adda.l d2, a2
+	adda.l d1, a2
+	movea.l a2, a0
+	movea.l Frame.Scratch(a3), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	clr.b (sp)
+	move.w d1, writer.NameToken.Id(sp)
+	clr.b writer.NameToken.Qualifier(sp)
+	move.b d4, writer.DECLARATION_MARKER(sp)
+	moveq #writer.DECLARATION_VALUE, d4
+	bra.w classify
+absent
+	moveq #0, d0
+done
+	addq.l #8, sp
+	movem.l (sp)+, d1-d4/a0-a3
+	tst.l d0
+	rts
+	.bend  ; updateRole
+; A0=session,A1=bounded directive leaf,D0=bytes. D0/CCR=declaration role
+; (immutable/mutable),0 other. Other registers preserved; dictionary lookup is read-only.
+; Configuration selection uses package identity only; PRVM still parses the
+; complete declaration after the selected capture record is materialized.
+declarationRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	movea.l Frame.Package(a2), a0
+	move.l package.Header.DeclarationPlan(a0), d0
+	adda.l d0, a0
+	move.l d1, d0
+	jsr declaration_parser.selectIdentity
+	bra.w done
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; declarationRole
+; A0=session,A1=bounded directive leaf,D0=bytes. Canonical package loop role.
+; Read-only selection shares the PRVM envelope selector; no expression parsing.
+loopRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	movea.l Frame.Package(a2), a1
+	move.l package.Header.LoopPlan(a1), d0
+	adda.l d0, a1
+	move.l d1, d0
+	jsr loop_parser.selectIdentity
+	bra.w done
+absent
+	moveq #parser_abi.PRVM_LOOP_ORDINARY, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; loopRole
+; A0=session,A1=bounded directive leaf,D0=bytes. Shared file action or zero.
+fileRole	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	movea.l a0, a2
+	movea.l a1, a0
+	movea.l Frame.Scratch(a2), a1
+	bsr.w lookupPackage
+	bne.w absent
+	tst.l d2
+	bne.w absent
+	move.l d1, d0
+	movea.l Frame.Package(a2), a0
+	move.l package.Header.FilePlanBytes(a0), d1
+	adda.l package.Header.FilePlan(a0), a0
+	jsr file_parser.selectIdentity
+	bra.w done
+absent
+	moveq #0, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; fileRole
+
+; A0=session with a capture-selected writer record. Parse the full file action
+; through PRVM and queue its bounded request. Caller owns static eligibility.
+captureFile	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	movea.l a0, a5
+	movea.l Frame.Scratch(a5), a6
+	bsr.w runFilePlan
+	bne.w bad
+	cmpi.l #1, d1
+	bne.w bad
+	move.l Frame.FileInclude(a5), d0
+	beq.w bad
+	movea.l d0, a2
+	movea.l a5, a0
+	lea MACRO_EVENTS(a6), a1
+	jsr (a2)
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; captureFile
+	.priv
+
+; Writer's optional member callback: A0=writer.Frame,A1=current token.
+; D0=0 member/1 ordinary/2 invalid,D1=base ID,D2=field ID,D3=base qualifier;
+; CCR=D0. Preserve D4-D7/A2-A6; inspect only captured lexical storage.
+bindMember	.block
+	.PACKING_COUNT packing_audit.PackingRow.Members, #1
+	.WORK_COUNT lazy_work.BIND, #1
+	movem.l a2-a3, -(sp)
+	movea.l writer.Frame.Context(a0), a2
+	movea.l PACKAGE_BASE(a2), a2
+	lea lookupPackage, a3
+	jsr members.bind
+	movem.l (sp)+, a2-a3
+	tst.l d0
+	rts
+	.bend  ; bindMember
+
+; Read-only package dictionary lookup. A0/D0=bounded bytes,A1=scratch.
+; D0=0 found/1 absent,D1=name,D2=qualifier,D3=roles; CCR=D0.
+; Preserve D4-D7/A2-A6; no source symbols or scope state are touched.
+lookupPackage	.block
+	movem.l d4-d7/a2-a6, -(sp)
+	movea.l a1, a6
+	movea.l a0, a2
+	move.l d0, d6
+	bsr.w hash
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	move.l 0(a1, d0.l), d7
+next
+	tst.l d7
+	beq.w absent
+	movea.l a6, a4
+	adda.l d7, a4
+	movea.l PACKAGE_BASE(a6), a3
+	adda.l Node.Entry(a4), a3
+	cmp.w package.DictionaryEntry.Length(a3), d6
+	bne.w advance
+	movea.l a2, a0
+	lea package.DICTIONARY_ENTRY_BYTES(a3), a1
+	move.l d6, d0
+	bsr.w equal
+	bne.w advance
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w advance
+	moveq #0, d1
+	move.w package.DictionaryEntry.Name(a3), d1
+	moveq #0, d2
+	move.b package.DictionaryEntry.Qualifier(a3), d2
+	moveq #0, d3
+	move.b package.DictionaryEntry.Roles(a3), d3
+	moveq #0, d0
+	bra.w done
+advance
+	move.l Node.Next(a4), d7
+	bra.w next
+absent
+	moveq #1, d0
+done
+	movem.l (sp)+, d4-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; lookupPackage
+; Writer callback ABI: lexical bytes A0/D0, D2=leading-name role;
+; outputs D1=id,D2=qualifier,D0/status.
+; A1=Scratch context. Preserves D3-D7/A2-A6.
+bind	.block
+	.PACKING_COUNT packing_audit.PackingRow.Names, #1
+	.WORK_COUNT lazy_work.BIND, #1
+	.HOTSPOT_ENTER #HOTSPOT_NAME_BIND
+	movem.l d3-d7/a2-a6, -(sp)
+	.MEMORY_BIND_SAMPLE_BEGIN
+	movea.l a1, a6
+	movea.l a3, a5  ; writer cursor before dictionary lookup repurposes A3
+	movea.l a0, a2
+	move.l d0, d6
+	move.l d2, d5
+	; The shared writer has already selected the physical statement head.
+	; Admit its stored spelling before statement execution tests its row count;
+	; retain the ordinary package identity unless a dot-template probe selects it.
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
+	beq.w headAdmitted
+	tst.w SCOPE_STATE+layout.State.PreviewBinding(a6)
+	bne.w headAdmitted
+	movea.l a6, a4
+	adda.l #SCOPE_STATE+scopes.IMPORT_STATE, a4
+	tst.w imports.COUNT(a4)
+	beq.w headAdmitted
+	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d5
+	beq.w admitHead
+	cmpi.l #1, d5
+	bne.w headAdmitted
+	tst.w LINE_FRAME+writer.Frame.HeadToken(a6)
+	bne.w headAdmitted
+admitHead
+	tst.w CONDITION_STATE+conditionals.State.Active(a6)
+	beq.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.Open(a6)
+	bne.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.ExternalOpen(a6)
+	bne.w headAdmitted
+	tst.w TEMPLATE_STATE+templates.State.Skipping(a6)
+	bne.w headAdmitted
+	movea.l a6, a4
+	adda.l #STATEMENT_STATE, a4
+	tst.w statements.State.Open(a4)
+	bne.w headAdmitted
+	tst.w statements.State.Skipping(a4)
+	bne.w headAdmitted
+	movem.l d1-d2/a3, -(sp)
+	bsr.w templateIdentity
+	movem.l (sp)+, d1-d2/a3
+headAdmitted
+	tst.l d2
+	beq.w packageName
+	cmpi.l #2, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_TEXT_NAME, d2
+	beq.w textName
+	cmpi.l #writer.BIND_ROLE_WIDTH, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_PACKAGE_NAME, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d2
+	beq.w syntaxMember
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d2
+	beq.w packageName
+	cmpi.l #writer.BIND_ROLE_INLINE_HEAD, d2
+	beq.w packageName
+	; writeValues has no declaration frontier. A first-column operand must
+	; use ordinary value binding, just like subsequent operands.
+	moveq #0, d0
+	move.w LINE_FRAME+writer.Frame.HeadToken(a6), d0
+	cmp.l LINE_FRAME+writer.Frame.Count(a6), d0
+	beq.w packageName
+	; Column-one names are declarations even when their spelling also occurs
+	; in the package dictionary (for example, an `end` branch label).
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
+	btst #0, 1(a4)
+	beq.w findSymbol
+	movea.l a6, a4
+	adda.l #SCOPE_STATE+scopes.STRUCT_STATE, a4
+	tst.w structs.State.Active(a4)
+	bne.w findSymbol
+	movea.l a6, a4
+	adda.l #TEMPLATE_STATE, a4
+	move.l a0, -(sp)
+	movea.l a4, a0
+	jsr templates.hasOpen
+	movea.l (sp)+, a0
+	beq.w packageName
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a4
+	btst #0, 1(a4)
+	beq.w findSymbol
+packageName
+	movea.l a2, a0
+	move.l d6, d0
+	bsr.w hash
+	move.l d0, d4
+	lsl.l #2, d0
+	lea PACKAGE_BUCKETS(a6), a1
+	move.l 0(a1, d0.l), d7
+findPackage
+	tst.l d7
+	beq.w findSymbol
+	movea.l a6, a4
+	adda.l d7, a4
+	movea.l PACKAGE_BASE(a6), a3
+	adda.l Node.Entry(a4), a3
+	cmp.w (a3), d6
+	bne.w advance
+	movea.l a2, a0
+	lea 6(a3), a1
+	move.l d6, d0
+	bsr.w equal
+	bne.w advance
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d5
+	bne.w statePackageEntry
+	btst #package.DICTIONARY_BUILTIN_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w advance
+	bra.w entryFound
+statePackageEntry
+	cmpi.l #writer.BIND_ROLE_STATE_ARGUMENT, d5
+	bne.w ordinaryPackageEntry
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w advance
+	bra.w entryFound
+ordinaryPackageEntry
+	cmpi.b #package.DICTIONARY_BUILTIN, package.DictionaryEntry.Roles(a3)
+	beq.w advance
+	btst #package.DICTIONARY_STATE_ARGUMENT_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w advance
+entryFound
+	.PACKING_COUNT packing_audit.PackingRow.PackageHits, #1
+	moveq #0, d1
+	move.w 2(a3), d1
+	btst #package.DICTIONARY_ASSIGNMENT_WORD_BIT, package.DictionaryEntry.Roles(a3)
+	bne.w assignmentWord
+ordinaryBoundName
+	; Package metadata owns operand identities. Statement-only spellings
+	; bind as source symbols when they occur in ordinary value operands.
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	beq.w memberBound
+	tst.l d5
+	bne.w packageBound
+	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w contextualGrammar
+	; Value/template operands retain both source and package register facets.
+	; Their consuming numeric operand resolves the role after substitution.
+	movem.l d1-d2/a0-a2, -(sp)
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	jsr loop_parser.valueContext
+	tst.l d0
+	beq.w valueContextReady
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.DeclarationPlanBytes(a2), d1
+	adda.l package.Header.DeclarationPlan(a2), a2
+	jsr declaration_parser.valueContext
+valueContextReady
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	beq.w sourceCandidate
+	bra.w packageBound
+sourceCandidate
+	moveq #0, d2
+	move.b package.DictionaryEntry.Qualifier(a3), d2
+	movem.l d1-d2, -(sp)  ; immutable package facet from the dictionary hit
+	moveq #1, d4
+	bsr.w sourceName
+	bne.w candidateFailed
+	move.l d1, -(sp)  ; keep origin ID distinct from its eventual value target
+	move.l d1, d0
+	move.l 4(sp), d1
+	move.l 8(sp), d2
+	lea SCOPE_STATE(a6), a0
+	jsr scopes.attachRegister
+	move.l (sp)+, d1
+	adda.w #8, sp
+	tst.l d0
+	bne.w bad
+	moveq #0, d2
+	bra.w good
+candidateFailed
+	adda.w #8, sp
+	bra.w bad
+assignmentWord
+	movem.l d1-d2/a0-a2, -(sp)
+	move.l d1, d0
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	move.l LINE_FRAME+writer.Frame.NextKind(a6), d2
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.DeclarationPlanBytes(a2), d1
+	adda.l package.Header.DeclarationPlan(a2), a2
+	jsr declaration_parser.contextKeyword
+	movem.l (sp)+, d1-d2/a0-a2
+	tst.l d0
+	beq.w packageBound
+	; Keep package member/register facets outside the update position; names
+	; without an applicable facet continue through ordinary source binding.
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	beq.w memberBound
+	cmpi.l #writer.BIND_ROLE_WIDTH, d5
+	beq.w memberBound
+	btst #package.DICTIONARY_REGISTER_OR_NAMED_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w findSymbol
+	bra.w ordinaryBoundName
+contextualGrammar
+	; PRVM owns contextual grammar binding; `in` remains a normal source
+	; name everywhere else, including the existing placement grammar.
+	movem.l d1/a0-a2, -(sp)
+	move.l d1, d0
+	movea.l LINE_FRAME+writer.Frame.Output(a6), a0
+	movea.l a5, a1
+	movea.l PACKAGE_BASE(a6), a2
+	move.l package.Header.LoopPlanBytes(a2), d1
+	adda.l package.Header.LoopPlan(a2), a2
+	jsr loop_parser.contextKeyword
+	movem.l (sp)+, d1/a0-a2
+	tst.l d0
+	bne.w findSymbol
+	bra.w packageBound
+memberBound
+	btst #package.DICTIONARY_MEMBER_BIT, package.DictionaryEntry.Roles(a3)
+	beq.w findSymbol
+packageBound
+	cmpi.l #2, d5
+	bne.w fixedPackageName
+	; Dot heads belong to shared directives/templates, including names that
+	; also occur in a CPU package. Declared templates take lexical precedence.
+	movea.l a6, a4
+	adda.l #TEMPLATE_STATE, a4
+	tst.w templates.State.Count(a4)
+	bne.w probeTemplateIdentity
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
+	beq.w fixedPackageName
+probeTemplateIdentity
+	movem.l d1-d2/a3, -(sp)
+	bsr.w templateIdentity
+	tst.l d0
+	bne.w noTemplateIdentity
+	adda.w #12, sp
+	bra.w good
+noTemplateIdentity
+	movem.l (sp)+, d1-d2/a3
+fixedPackageName
+	moveq #0, d2
+	move.b 4(a3), d2
+	bra.w good
+advance
+	move.l Node.Next(a4), d7
+	bra.w findPackage
+textName
+	movea.l a2, a0
+	move.l d6, d0
+	movea.l a6, a1
+	bsr.w bindTextName
+	bra.w done
+
+syntaxMember
+	movem.l a0-a3, -(sp)
+	lea LINE_FRAME(a6), a0
+	movea.l writer.Frame.CurrentToken(a0), a1
+	movea.l PACKAGE_BASE(a6), a2
+	lea lookupPackage, a3
+	jsr memberSyntax.field
+	movem.l (sp)+, a0-a3
+	tst.l d0
+	beq.w good
+	bra.w findSymbol
+
+findSymbol
+	moveq #0, d4
+	bsr.w sourceName
+	bra.w done
+; Shared lexical binding. D4 selects origin versus canonical identity; active
+; iterators keep their temporary origin. D3 retains the current struct scope.
+sourceName
+	.PACKING_COUNT packing_audit.PackingRow.SourceBinds, #1
+	movea.l a2, a0
+	move.l d6, d0
+	lea SCOPE_STATE(a6), a1
+	tst.l d5
+	bne.w ordinarySourceName
+	jsr scopes.probeIterator
+	tst.l d0
+	beq.w sourceDone
+	move.l d6, d0
+ordinarySourceName
+	moveq #0, d3
+	move.w layout.State.Current(a1), d3
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	bne.w lexicalSourceName
+	clr.w layout.State.Current(a1)
+	moveq #1, d4  ; member keys retain their global origin identity
+	bra.w bindScopedName
+lexicalSourceName
+	tst.l d5
+	beq.w valueEnvironment
+	cmpi.l #writer.BIND_ROLE_MEMBER_NAME, d5
+	beq.w valueEnvironment
+	cmpi.l #writer.BIND_ROLE_CALL_NAME, d5
+	bne.w bindScopedName
+valueEnvironment
+	movea.l a1, a4
+	adda.l #scopes.STRUCT_STATE, a4
+	tst.w structs.State.Active(a4)
+	beq.w bindScopedName
+	; Field extents use the surrounding lexical environment. Field names
+	; themselves bind within the layout; its total size is assigned at close.
+	move.w structs.State.Parent(a4), layout.State.Current(a1)
+bindScopedName
+	tst.l d4
+	beq.w canonicalSource
+	jsr scopes.bindOrigin
+	bra.w sourceBound
+canonicalSource
+	jsr scopes.bind
+sourceBound
+	lea SCOPE_STATE(a6), a1
+	move.w d3, layout.State.Current(a1)
+	tst.l d0
+	bne.w sourceDone
+	tst.l d5
+	bne.w sourceDone
+	movea.l SESSION_FRAME(a6), a4
+	tst.w Frame.PreviewMode(a4)
+	bne.w sourceDone
+	move.l d2, -(sp)
+	movea.l a2, a0
+	move.l d6, d0
+	.PACKING_COUNT packing_audit.PackingRow.CaptureBinds, #1
+	jsr scopes.captureBinding
+	move.l (sp)+, d2
+	tst.l d0
+sourceDone
+	rts
+good
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	.MEMORY_BIND_SAMPLE_END
+	movem.l (sp)+, d3-d7/a2-a6
+	.HOTSPOT_LEAVE #HOTSPOT_NAME_BIND
+	rts
+	.bend  ; bind
+; Raw decoded encoding name A0/D0, session scratch A1. Normalize once and
+; bind its global origin, independent of lexical aliases and current module.
+; D0=status,D1=id,D2=zero qualifier. Preserve D3-D7/A2-A6.
+bindTextName	.block
+	movem.l d3-d7/a2-a6, -(sp)
+	movea.l a1, a6
+	movea.l a6, a1
+	adda.l #TEXT_NAME_BUFFER, a1
+	move.l #layout.NAME_BYTES-1, d1
+	jsr textNames.normalize
+	bne.w done
+	move.l d1, d0
+	movea.l a6, a0
+	adda.l #TEXT_NAME_BUFFER, a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.bindEncodingName
+done
+	clr.l d2
+	movem.l (sp)+, d3-d7/a2-a6
+	tst.l d0
+	rts
+	.bend  ; bindTextName
+; Probe only a declared template; a failed probe retains the package identity.
+; A2/D6=lexeme,A6=session scratch. D0=status,D1/D2=source ID/qualifier.
+templateIdentity	.block
+	movem.l d3-d7/a0-a6, -(sp)
+	suba.w #12, sp
+	movea.l a2, a0
+	move.l d6, d0
+	lea SCOPE_STATE(a6), a1
+	move.l layout.State.FirstBound(a1), d7
+	jsr scopes.bind
+	; The binder may leave A1 in its name arena; restore the scope owner.
+	lea SCOPE_STATE(a6), a1
+	move.l d7, layout.State.FirstBound(a1)
+	tst.l d0
+	bne.w bad
+	move.b #8, (sp)
+	move.b #1, 1(sp)
+	clr.w 2(sp)
+	move.b #7, 4(sp)
+	clr.b 5(sp)
+	move.w d1, 6(sp)
+	move.b d2, 8(sp)
+	; Stored providers have no candidate until ordinary import policy resolves
+	; this call spelling. Admit that one facet before probing the template index.
+	tst.l SCOPE_STATE+layout.State.DependencyResolve(a6)
+	beq.w knownTemplateIdentity
+	tst.w SCOPE_STATE+layout.State.PreviewBinding(a6)
+	bne.w knownTemplateIdentity
+	lea 5(sp), a0
+	lea SCOPE_STATE(a6), a1
+	jsr scopes.resolveTemplate
+	move.l d7, SCOPE_STATE+layout.State.FirstBound(a6)
+	; An ordinary exact miss still permits enclosing lexical candidates.
+	; Only a failed stored demand prevents the established index lookup.
+	tst.w SCOPE_STATE+layout.State.DependencyFailed(a6)
+	bne.w bad
+knownTemplateIdentity
+	movea.l sp, a0
+	lea SCOPE_STATE(a6), a1
+	movea.l a6, a2
+	adda.l #TEMPLATE_STATE, a2
+	jsr templates.knownRole
+	cmpi.l #1, d0
+	bne.w bad
+	moveq #0, d1
+	move.w 6(sp), d1
+	moveq #0, d2
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	adda.w #12, sp
+	movem.l (sp)+, d3-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; templateIdentity
+
+; Case-insensitive ASCII hash shared by dictionary construction and binding.
+; A0/D0=bytes/count; D0=8-bit bucket. Clobbers D1-D3/A0; other registers kept.
+hash	.block
+	moveq #0, d1
+	tst.l d0
+	beq.w done
+loop
+	moveq #0, d2
+	move.b (a0)+, d2
+	cmpi.b #'A', d2
+	blo.w ready
+	cmpi.b #'Z', d2
+	bhi.w ready
+	addi.b #32, d2
+ready
+	move.l d1, d3
+	lsl.l #5, d1
+	add.l d3, d1
+	add.l d2, d1
+	subq.l #1, d0
+	bne.w loop
+done
+	move.l d1, d0
+	andi.l #255, d0
+	rts
+	.bend  ; hash
+; Compare D0 nonempty ASCII lexical bytes, A0/A1; D0=0 equal, 1 unequal.
+; Clobbers D1/D2/A0/A1; preserves remaining registers; CCR reflects D0.
+equal	.block
+loop
+	moveq #0, d1
+	move.b (a0)+, d1
+	cmpi.b #'A', d1
+	blo.w leftReady
+	cmpi.b #'Z', d1
+	bhi.w leftReady
+	addi.b #32, d1
+leftReady
+	moveq #0, d2
+	move.b (a1)+, d2
+	cmpi.b #'A', d2
+	blo.w rightReady
+	cmpi.b #'Z', d2
+	bhi.w rightReady
+	addi.b #32, d2
+rightReady
+	cmp.b d1, d2
+	bne.w different
+	subq.l #1, d0
+	bne.w loop
+	moveq #0, d0
+	rts
+different
+	moveq #1, d0
+	rts
+	.bend  ; equal
+	.include "../language/statement_frontend.i"
+	.endsection
+	.section data, kind=data
+AsciiSpelling	.byte "ascii"
+PetsciiSpelling	.byte "petscii"
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, binding_records.ENTRY_BYTES
+	.endsection
+	.endmodule

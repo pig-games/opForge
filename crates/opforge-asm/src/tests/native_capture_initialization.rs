@@ -106,22 +106,22 @@ fn cases() -> Vec<(usize, usize, usize, u16, u8)> {
 
 fn probe_source() -> String {
     let root = workspace_root();
-    let capture = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/experimental/binary_capture.asm"),
-    )
-    .unwrap();
-    let memory = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/experimental/binary_memory.asm"),
-    )
-    .unwrap();
-    let writer = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/experimental/binary_source.asm"),
-    )
-    .unwrap();
+    let capture =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/assembler/source/capture.asm"))
+            .unwrap();
+    let memory =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/platform/memory.asm")).unwrap();
+    let writer =
+        fs::read_to_string(root.join("native/motorola68000/amigaos/assembler/source/records.asm"))
+            .unwrap();
     // The writer implementation brings the whole lowering pipeline. Capture
     // consumes only its public Token ABI; take that declaration from its owner.
     let token_abi = writer.split_once("\nToken\t.struct\n").unwrap().1;
     let token_abi = token_abi.split_once("\t.endstruct").unwrap().0;
+    let token_bytes = writer
+        .lines()
+        .find(|line| line.starts_with("TOKEN_BYTES = "))
+        .unwrap();
     let mut checks = String::new();
     let mut data = String::new();
     for (index, (count, lexemes, plans, line, root)) in cases().into_iter().enumerate() {
@@ -198,8 +198,8 @@ fn probe_source() -> String {
     format!(
         r#".module capture.initialization_probe
 .cpu 68020
-.use experimental.amigaos.binary_capture as capture
-.use experimental.amigaos.binary_memory as memory
+.use opforge.assembler.source.capture as capture
+.use opforge.platform.memory as memory
 .section entry,kind=code
 start .block
  movem.l d1-d7/a0-a6,-(sp)
@@ -332,11 +332,12 @@ AfterCCR .res word,1
 .endmodule
 {capture}
 {memory}
-.module experimental.amigaos.binary_source
+.module opforge.assembler.source.records
 .cpu 68020
 .pub
 Token .struct
 {token_abi}.endstruct
+{token_bytes}
 .endmodule
 .end
 "#,

@@ -44,8 +44,7 @@ fn oracle_source() -> &'static str {
 }
 
 fn build_harness(root: &Path, dir: &Path) -> Vec<u8> {
-    let source = root
-        .join("native/motorola68000/amigaos/test-harnesses/experimental/hunk_stream_harness.asm");
+    let source = root.join("native/motorola68000/amigaos/tests/assembler/hunk_stream_harness.asm");
     let cli = Cli::parse_from([
         "opForge".into(),
         source.to_string_lossy().into_owned(),

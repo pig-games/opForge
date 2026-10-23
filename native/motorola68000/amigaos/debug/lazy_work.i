@@ -1,7 +1,7 @@
 ; Additional opt-in passive work observer. Both flags are required.
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
-	.use debug.amigaos.lazy_work as lazy_work
+	.use opforge.debug.lazy_work as lazy_work
 .endif
 .endif
 WORK_COUNT .macro field, amount

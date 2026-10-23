@@ -200,7 +200,7 @@ fn compact_cli_source_outputs_and_validation() {
     let build = build_native_packages(
         &registry,
         &dir.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();
@@ -311,7 +311,7 @@ fn compact_cli_source_outputs_and_validation() {
         ("reject-different-hunk-selection", format!("{HUNK_BODY}.output \"first\",format=hunk,sections=code,data,bss\n.output \"second\",format=hunk,sections=code\n.endmodule\n")),
         ("source-output-write-failure", format!("{PLACED_BODY}.output \"entry.asm/image\",format=bin,sections=code,data\n.endmodule\n")),
     ] {
-        let diagnostic = if name != "source-output-write-failure" { "binary source: unsupported or invalid input" } else { "compact CLI: output failed" };
+        let diagnostic = if name != "source-output-write-failure" { "binary source: unsupported or invalid input" } else { "opforge: output failed" };
         run(name, source.as_bytes(), false, OpforgeNativeCliProof::ExpectedFailureContaining(diagnostic), 20);
     }
     assert!(attempted > 0, "output selector must match a real case");

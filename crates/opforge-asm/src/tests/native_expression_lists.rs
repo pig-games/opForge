@@ -103,7 +103,7 @@ fn native_lists_host_assembles() {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.0.join("native"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
@@ -123,7 +123,7 @@ fn native_lists_fs_uae() {
         let build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.0.join("native"),
-            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &root.join("native/motorola68000/amigaos/main.asm"),
             &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
         )
         .unwrap();

@@ -1,7 +1,7 @@
 //! Portable export for a physical Amiga self-host run, with optional FS-UAE proof.
 //! OPFORGE_COMPACT_EXPORT_DIR=/absolute/new/bundle cargo test -p asm
 //! export_compact_self_host_bundle -- --ignored --nocapture --test-threads=1
-//! Set OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED=68020 for embedded output and
+//! The default embeds 68020 and uses source-directed disk capture. Set
 //! OPFORGE_COMPACT_EXPORT_NATIVE=1 for fresh full native qualification.
 use super::*;
 use crate::fs_uae_smoke::{
@@ -11,9 +11,10 @@ use crate::fs_uae_smoke::{
 };
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+use registry::registry::ModuleRegistry;
 use vm::runtime_model_core::RuntimeModelCore;
 
-const ENTRY: &str = "experimental/opforge_compact_cli.asm";
+const ENTRY: &str = "main.asm";
 const INSTRUMENTED_DEFINES: &[&str] = &[
     "OPFORGE_DEBUG_CONTRACTS",
     "OPFORGE_MEMORY_TELEMETRY",
@@ -121,7 +122,11 @@ fn export_bundle(failure_capture: bool) {
         Ok(value) if value == "68020" => true,
         _ => panic!("{name} currently accepts only 68020"),
     };
-    let output_embedded = selection("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED");
+    let output_embedded = if std::env::var_os("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED").is_some() {
+        selection("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED")
+    } else {
+        std::env::var_os("OPFORGE_COMPACT_EXPORT_EMBED").is_none()
+    };
     let embedded = selection("OPFORGE_COMPACT_EXPORT_EMBED") || output_embedded;
     let package_build = embedded.then(|| {
         use crate::native_package_build::{build_native_packages, EmbedSelection};
@@ -144,6 +149,8 @@ fn export_bundle(failure_capture: bool) {
     ];
     args.extend([
         "-M".to_string(),
+        source_root.to_string_lossy().into_owned(),
+        "-I".to_string(),
         source_root.to_string_lossy().into_owned(),
         "-I".to_string(),
         source_root.join("debug").to_string_lossy().into_owned(),
@@ -169,7 +176,7 @@ fn export_bundle(failure_capture: bool) {
             concise_assembly_failure("fresh release self-build", error)
         )
     });
-    let oracle = fs::read(scratch.join("build/opforge_compact")).unwrap();
+    let oracle = fs::read(scratch.join("build/opforge")).unwrap();
     let allocation = hunk::allocation(&oracle).expect("strict release Hunk allocation");
     let dependency_text = fs::read_to_string(&dependencies).unwrap();
     let phase_only = std::env::var("OPFORGE_PHASE_ONLY").as_deref() == Ok("1");
@@ -278,7 +285,7 @@ fn export_bundle(failure_capture: bool) {
                 concise_assembly_failure("fresh configured bootstrap build", error)
             )
         });
-        fs::read(scratch.join("build/opforge_compact")).unwrap()
+        fs::read(scratch.join("build/opforge")).unwrap()
     } else {
         oracle.clone()
     };
@@ -297,11 +304,10 @@ fn export_bundle(failure_capture: bool) {
                         if path == build.cli_source_path {
                             (PathBuf::from(ENTRY), "configured_entry")
                         } else if path == build.catalog_path {
-                            (PathBuf::from("experimental/catalog.i"), "generated_catalog")
+                            (PathBuf::from("catalog.i"), "generated_catalog")
                         } else if path.starts_with(build.output_dir.join("packages")) {
                             (
-                                Path::new("experimental")
-                                    .join(path.strip_prefix(&build.output_dir).unwrap()),
+                                path.strip_prefix(&build.output_dir).unwrap().to_path_buf(),
                                 "package_asset",
                             )
                         } else {
@@ -370,7 +376,14 @@ fn export_bundle(failure_capture: bool) {
     let module_roots = ["src"];
     let entry = Path::new(ENTRY);
     let package_file = embedded_files.first().map_or("p.bin", String::as_str);
-    let mut command = if embedded {
+    let native_output_file = if output_embedded {
+        "build/opforge"
+    } else {
+        "output.hunk"
+    };
+    let mut command = if output_embedded {
+        format!("opforge -i src/{}", entry.display())
+    } else if embedded {
         format!("opforge -i src/{} --hunk output.hunk", entry.display())
     } else {
         format!(
@@ -378,7 +391,7 @@ fn export_bundle(failure_capture: bool) {
             entry.display()
         )
     };
-    command.push_str(" -M src -I src/debug");
+    command.push_str(" -M src -I src/debug --capture-dir scratch");
     assert!(
         command.len() <= 255,
         "classic Shell command exceeds 255 bytes"
@@ -445,6 +458,8 @@ fn export_bundle(failure_capture: bool) {
         "include_roots": ["src/debug"],
         "command": command,
         "native_validation": "not_run",
+        "native_output_file": native_output_file,
+        "capture_mode": "disk",
     });
     fs::create_dir(&output).expect("create new export directory");
     for (_, staged, bytes, _) in &sources {
@@ -476,7 +491,7 @@ fn export_bundle(failure_capture: bool) {
     run_with_validated_cli_with_context(&relocated_cli, &relocated_config)
         .expect("fresh release assembly of relocated bundle inputs");
     assert_eq!(
-        fs::read(scratch.join("relocated/build/opforge_compact")).unwrap(),
+        fs::read(scratch.join("relocated/build/opforge")).unwrap(),
         oracle,
         "portable bundle must produce the same complete Hunk"
     );
@@ -491,14 +506,17 @@ fn export_bundle(failure_capture: bool) {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare output.hunk exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/experimental/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare the manifest native_output_file exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     if std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref() == Ok("1") {
+        // Stage the disk-capture parent before executing the exact exported command.
+        let scratch_marker = Vec::new();
         let mut guest_files = sources
             .iter()
             .map(|(_, staged, bytes, _)| (format!("src/{}", staged.display()), bytes))
             .collect::<Vec<_>>();
+        guest_files.push(("scratch/.keep".into(), &scratch_marker));
         if !embedded {
             guest_files.push(("p.bin".into(), &package));
         }
@@ -509,20 +527,32 @@ fn export_bundle(failure_capture: bool) {
                 bytes,
             })
             .collect::<Vec<_>>();
+        let guest_output = format!("Work/{native_output_file}");
         let artifacts = [OpforgeNativeCliExpectedArtifact {
-            relative_path: "Work/output.hunk",
+            relative_path: &guest_output,
             rust_oracle: &oracle,
         }];
         let bootstrap_define_refs = bootstrap_defines
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
+        // The runner stages its launcher at the product output path. Remove it
+        // after copying so only a freshly written assembly can satisfy proof.
+        let assembly_command = command.strip_prefix("opforge ").unwrap();
+        let native_command = if output_embedded {
+            format!(
+                "--version\nCopy Work:build/opforge Work:selfhost_bootstrap\n\
+                 Delete Work:build/opforge\nWork:selfhost_bootstrap {assembly_command}"
+            )
+        } else {
+            assembly_command.to_owned()
+        };
         let case = OpforgeNativeCliParityCase {
             name: "compact-configured-self-host",
             cpu_override: "68020",
             extra_assembly_defines: &bootstrap_define_refs,
             source_override: Some(b""),
-            command_template: Some(command.strip_prefix("opforge ").unwrap()),
+            command_template: Some(&native_command),
             package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
             extra_guest_files: &files,
             proof: if failure_capture {

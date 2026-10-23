@@ -5,8 +5,7 @@ use super::*;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 
-const HARNESS: &str =
-    "native/motorola68000/amigaos/test-harnesses/experimental/binary_text_harness.asm";
+const HARNESS: &str = "native/motorola68000/amigaos/tests/assembler/text_harness.asm";
 const ORACLE: &str = r#".module main
 .cpu 68020
 .enc petscii
@@ -79,7 +78,7 @@ fn image_named(root: &Path, scratch: &Path, harness: &str, artifact: &str) -> Ve
         "-M".into(),
         amiga.to_string_lossy().into_owned(),
         "-I".into(),
-        amiga.join("include").to_string_lossy().into_owned(),
+        amiga.to_string_lossy().into_owned(),
         "-I".into(),
         amiga.join("debug").to_string_lossy().into_owned(),
     ]);
@@ -104,45 +103,8 @@ fn native_text_encoding_component_host_contract() {
     assert!(!image(&workspace_root(), &dir.0).is_empty());
 }
 
-#[test]
-#[ignore = "requires configured FS-UAE; fresh text owner component artifact proof"]
-fn native_text_encoding_component_fs_uae() {
-    use crate::fs_uae_smoke::{
-        run_prebuilt_compact_cli_case_from_env, FsUaeSmokeOutcome, OpforgeNativeCliPackageMode,
-        OpforgeNativeCliParityCase, OpforgeNativeCliProof,
-    };
-    let dir = scratch();
-    let root = workspace_root();
-    let expected = oracle(&dir.0, ORACLE).expect("case-owned live Rust text oracle");
-    let executable = image(&root, &dir.0);
-    let case = OpforgeNativeCliParityCase {
-        name: "text-owner-component",
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: Some(ORACLE.as_bytes()),
-        // The component deliberately accepts and ignores CLI arguments. The
-        // ordinary source still binds the fresh challenge and direct oracle.
-        command_template: Some("--cpu 68020 Work:main.asm"),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-        extra_guest_files: &[],
-        proof: OpforgeNativeCliProof::ExactArtifact {
-            relative_path: "Work/build/text-results.bin",
-            rust_oracle: &expected,
-        },
-    };
-    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &executable)
-        .expect("fresh text component completion");
-    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-        panic!("real native execution required")
-    };
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(0));
-    assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
-}
-
 const GRAMMAR_HARNESS: &str =
-    "native/motorola68000/amigaos/test-harnesses/experimental/binary_text_grammar_harness.asm";
+    "native/motorola68000/amigaos/tests/assembler/text_grammar_harness.asm";
 fn grammar_oracle() -> Vec<u8> {
     use package::{packed_text_program, PARSER_VM_MACRO_VERSION, PARSER_VM_PACKED_TEXT_ENTRY};
     use vm::packed_source_layout as layout;
@@ -219,38 +181,6 @@ fn native_text_grammar_component_host_contract() {
         "text-grammar.hunk"
     )
     .is_empty());
-}
-#[test]
-#[ignore = "requires configured FS-UAE; fresh shared text grammar component proof"]
-fn native_text_grammar_component_fs_uae() {
-    let dir = scratch();
-    let root = workspace_root();
-    let expected = grammar_oracle();
-    let source = grammar_oracle_source(&expected);
-    assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
-    let executable = image_named(&root, &dir.0, GRAMMAR_HARNESS, "text-grammar.hunk");
-    let case = OpforgeNativeCliParityCase {
-        name: "text-grammar-component",
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: Some(source.as_bytes()),
-        command_template: Some("--cpu 68020 Work:main.asm"),
-        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
-        extra_guest_files: &[],
-        proof: OpforgeNativeCliProof::ExactArtifact {
-            relative_path: "Work/build/text-grammar.bin",
-            rust_oracle: &expected,
-        },
-    };
-    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &executable)
-        .expect("fresh text grammar component completion");
-    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
-        panic!("real native execution required");
-    };
-    assert_eq!(runs.len(), 1);
-    assert!(runs[0].protocol_completed);
-    assert_eq!(runs[0].exit_code, Some(0));
-    assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
 }
 
 // Full compact-source integration. Each native case is compared with its own
@@ -702,6 +632,76 @@ fn scalar_capsule_65c02_package() -> Vec<u8> {
         .expect("actual 65C02 pipeline");
     crate::binary_source_experiment::prepare_package(&core, &pipeline)
         .expect("current 65C02 package")
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; fresh text owner component artifact proof"]
+fn native_text_encoding_component_fs_uae() {
+    use crate::fs_uae_smoke::{
+        run_prebuilt_compact_cli_case_from_env, FsUaeSmokeOutcome, OpforgeNativeCliPackageMode,
+        OpforgeNativeCliParityCase, OpforgeNativeCliProof,
+    };
+    let dir = scratch();
+    let root = workspace_root();
+    let expected = oracle(&dir.0, ORACLE).expect("case-owned live Rust text oracle");
+    let executable = image(&root, &dir.0);
+    let case = OpforgeNativeCliParityCase {
+        name: "text-owner-component",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(ORACLE.as_bytes()),
+        // The component deliberately accepts and ignores CLI arguments. The
+        // ordinary source still binds the fresh challenge and direct oracle.
+        command_template: Some("--cpu 68020 Work:main.asm"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/text-results.bin",
+            rust_oracle: &expected,
+        },
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &executable)
+        .expect("fresh text component completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required")
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
+}
+
+#[test]
+#[ignore = "requires configured FS-UAE; fresh shared text grammar component proof"]
+fn native_text_grammar_component_fs_uae() {
+    let dir = scratch();
+    let root = workspace_root();
+    let expected = grammar_oracle();
+    let source = grammar_oracle_source(&expected);
+    assert_eq!(oracle(&dir.0, &source).unwrap(), expected);
+    let executable = image_named(&root, &dir.0, GRAMMAR_HARNESS, "text-grammar.hunk");
+    let case = OpforgeNativeCliParityCase {
+        name: "text-grammar-component",
+        cpu_override: "68020",
+        extra_assembly_defines: &[],
+        source_override: Some(source.as_bytes()),
+        command_template: Some("--cpu 68020 Work:main.asm"),
+        package_mode: OpforgeNativeCliPackageMode::EmbeddedDefault,
+        extra_guest_files: &[],
+        proof: OpforgeNativeCliProof::ExactArtifact {
+            relative_path: "Work/build/text-grammar.bin",
+            rust_oracle: &expected,
+        },
+    };
+    let outcome = run_prebuilt_compact_cli_case_from_env(&root, &case, &executable)
+        .expect("fresh text grammar component completion");
+    let FsUaeSmokeOutcome::Completed { runs } = outcome else {
+        panic!("real native execution required");
+    };
+    assert_eq!(runs.len(), 1);
+    assert!(runs[0].protocol_completed);
+    assert_eq!(runs[0].exit_code, Some(0));
+    assert!(runs[0].success, "{}\n{}", runs[0].stdout, runs[0].stderr);
 }
 
 fn run_scalar_capsule_cases(mut cases: Vec<super::native_source_cases::Case>) {

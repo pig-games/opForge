@@ -166,7 +166,7 @@ fn native(cpu: &str, source: &str, hunk: bool, valid: bool) {
     if let Ok(expected) = expected {
         assert_eq!(run.verified_output.as_deref(), Some(expected.as_slice()));
     }
-    let image = &run.captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &run.captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("EMIT cpu={cpu} valid={valid} source_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={}", source.len(),run.start_to_done_host_seconds,image.len(),hunk::allocation(image).unwrap().total());
 }
 #[test]

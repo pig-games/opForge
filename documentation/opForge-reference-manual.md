@@ -222,7 +222,7 @@ Notes:
   dependent guards are diagnosed before opening the file. Repetition opening and
   closing directives must remain in the same source stream; splitting them
   across a deferred include boundary is not yet supported.
-- The compact native checkpoint now acquires active current-module includes,
+- The native checkpoint now acquires active current-module includes,
   including macro/segment filename arguments, definitions introduced by includes,
   nested acquisition and definition-relative imported templates. Counted
   and scalar list/range loops can acquire files from physical source or expanded
@@ -232,7 +232,7 @@ Notes:
   acquisition retain their runtime execution path. Named scoped-loop collections
   combined with acquisition, and assembly-dependent acquisition controls such as
   `.while $ < 2`, remain unsupported.
-- Compact native capture now acquires static includes before module discovery and
+- Native capture now acquires static includes before module discovery and
   dependency ordering. Included module declarations, sections and `.use` edges
   participate in the captured graph. Nested paths use the including file; assets
   retain their physical origin. Preprocessor guards select acquisition, while
@@ -666,7 +666,7 @@ convergence. One newly activated branch may introduce scalar immutable
 dependency chains used by its forward loop counts. This also works alongside an unrelated
 forward-count replay. Declarations exposed only by an additional count expansion,
 and new forward guards needing another branch activation, remain unsupported.
-The experimental native path has focused 68020/6502 package coverage for selected
+The native path has focused 68020/6502 package coverage for selected
 branch-local scalar constants, dependency chains and nested forward counts. Only
 selected declarations claim ownership: inactive alternatives do not evaluate missing
 values, while duplicate active immutable definitions reject.
@@ -936,7 +936,7 @@ Metadata directives in inactive conditional branches do not change configuration
 Notes:
 - `.use` must appear **inside a module** and **at module scope**.
 - Bare non-selective imports receive an implicit namespace qualifier from the
-  final module-id segment. For example, `.use opasm.amigaos.engine` lets code
+  final module-id segment. For example, `.use library.engine` lets code
   reference `engine.sessionPass`.
 - `as <qualifier>` binds an explicit namespace qualifier. Qualified references
   can then be used in operands, for example `jsr engine.sessionPass`.
@@ -971,7 +971,7 @@ Notes:
   carries captured values directly into assembly, so dependency ordering does
   not require the caller's type declaration to have assembled first. Generated
   parameter assignment lines no longer appear in source listings.
-  The experimental compact native path has focused matching coverage for scalar,
+  The native path has focused matching coverage for scalar,
   flat-list and range values, `.len`, indexing, `.var`/`.set` snapshots and
   forwarding through imported modules, including two-module forwarding and
   repeated equal imports. Native struct configuration now captures available
@@ -998,7 +998,7 @@ Notes:
 Reusable modules may declare logical sections:
 
 ```
-.module opasm.amigaos.engine
+.module library.engine
 .pub
 .section code, kind=code, logical
 sessionPass:
@@ -1012,7 +1012,7 @@ Root modules map reachable logical sections into concrete output sections:
 ```
 .module main
 .cpu 68000
-.use opasm.amigaos.engine as engine map {
+.use library.engine as engine map {
     code -> app_code
 }
 .section app_code, kind=code
@@ -1491,13 +1491,13 @@ tmp .const 3        ; resolves in caller scope unless body adds explicit .block
 
 ## 5. Command line options
 
-The experimental native AmigaOS CLI enables incremental module reuse by default.
+The native AmigaOS CLI enables incremental module reuse by default.
 It stores `.ofm` objects and `.ofi` timestamp/publication metadata under
 `build/ofm` in the working directory. `--incremental-dir DIR` overrides that
 location, and `--rebuild` recompiles modules even when cached objects are fresh.
 These options currently belong to the native CLI; they are not Rust CLI options.
 
-The compact native CLI prints plain module progress to the process error stream
+The native CLI prints plain module progress to the process error stream
 (falling back to its output stream when no error stream is available). Each
 `Processing` line identifies a dependency module. Its timed completion says
 `Assembled`, `Reused` for an accepted cache hit, or `Deferred` when processing
@@ -1512,7 +1512,7 @@ reports `Failed` instead of a successful completion.
 Use `-q` or `--quiet` to suppress this progress and the incremental-count summary.
 Errors and cache-unavailable warnings remain visible. There are no terminal
 control codes, so redirected progress remains readable. This reporting currently
-belongs to the experimental native CLI; Rust CLI reporting is unchanged.
+belongs to the native CLI; Rust CLI reporting is unchanged.
 
 Freshness uses the source/include/asset acquisition timestamps and file sizes,
 plus dependency rebuilds. Source contents are not hashed or diffed. Configuration,
@@ -1713,7 +1713,7 @@ register_case = "lower"
 One practical invocation for the Motorola 68000 AmigaOS tree is:
 
 ```text
-opforge -i native/motorola68000/amigaos/test-harnesses/tkvm/tokvm_interpreter.asm \
+opforge -i native/motorola68000/amigaos/tests/tkvm/tokvm_interpreter.asm \
   --fmt-check \
   --fmt-config .opforgefmt.toml
 ```
@@ -2185,17 +2185,17 @@ MOVE.L #target+offset,D1
 `MOVE.L` immediate-to-data-register operands follow the same rule. A difference
 between two addresses in the same section is absolute and needs no relocation.
 The current address `$` inside a section carries that section's relocation base,
-so `.long $` emits `HUNK_RELOC32` in Rust and the compact native assembler.
+so `.long $` emits `HUNK_RELOC32` in Rust and the native assembler.
 All operands of one data statement use its starting address: `.long $,$` emits
 two equal addends with separate relocation records. Shared `.emit long,$,$`
 follows the same rule. Same-section differences such as `$-label` are absolute;
 different section bases do not cancel merely because their numeric offsets match.
-Rust and the compact native assembler also support `$` in the supported
+Rust and the native assembler also support `$` in the supported
 instruction address forms. `MOVE.L #$,D0` loads the instruction's starting address
 and records its longword relocation; `BRA.W $` branches to itself with no Hunk
 relocation. Absolute addends retain that address base, and same-section
 differences are absolute. Each instruction captures its own starting PC, even
-across reopened or mapped sections. The compact native Hunk path also supports
+across reopened or mapped sections. The native Hunk path also supports
 literal `.region` bounds and `.place` with power-of-two region, section and
 placement alignment. Labels, `$`, branches and internal `.align` use placed
 addresses; absolute-long relocation fields and fixup locations remain relative
@@ -2206,7 +2206,7 @@ slots, eight regions and eight placements, and rejects nonconvergent layout afte
 its bounded replay limit. This does
 not establish `.pack`, expression-valued placement options or full flat-placement
 alignment parity; unsupported nondefault flat alignment rejects explicitly.
-The compact native explicit mapped logical-section Hunk path now
+The native explicit mapped logical-section Hunk path now
 appends reachable imported blocks after concrete content, including reopened
 concrete sections and BSS reservations. Mapped labels, data `$` and aliases use
 the concrete segment identity and include its prefix in their addends and fixup
@@ -2214,12 +2214,12 @@ offsets. Mapped content follows the concrete maximum extent, with zero padding
 when that extent exceeds its initialized payload. Layout traversals measure and
 stabilize those prefixes; both assembly
 passes retain statement order, including mutable symbols and readonly snapshots.
-The compact path currently supports two explicit maps and eight source section
+The native path currently supports two explicit maps and eight source section
 slots in total, including logical fragments. It requires matching section kinds
 and bounded layout stabilization; it does not promise general layout convergence.
 Current global section-name collisions and conflicting mappings remain rejected.
 
-Readonly assignments in Rust and the compact native assembler retain their
+Readonly assignments in Rust and the native assembler retain their
 relocation meaning: a readonly snapshot of `target+offset` remains an address,
 while a snapshot of an absolute mutable value remains an absolute number. Later
 changes to the mutable input do not alter the snapshot's value or relocation.

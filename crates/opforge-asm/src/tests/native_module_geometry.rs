@@ -275,9 +275,7 @@ fn prepare(dir: &Path, case: &GeometryCase) -> Fixture {
 fn probe(root: &Path, dir: &Path) -> Vec<u8> {
     let path = dir.join("module_geometry_probe.asm");
     fs::copy(
-        root.join(
-            "native/motorola68000/amigaos/test-harnesses/experimental/module_geometry_probe.asm",
-        ),
+        root.join("native/motorola68000/amigaos/tests/assembler/module_geometry_probe.asm"),
         &path,
     )
     .unwrap();
@@ -288,6 +286,8 @@ fn probe(root: &Path, dir: &Path) -> Vec<u8> {
         "-M".to_owned(),
         native.to_string_lossy().into_owned(),
         "-I".to_owned(),
+        native.to_string_lossy().into_owned(),
+        "-I".into(),
         native.join("debug").to_string_lossy().into_owned(),
     ]);
     let mut config = validate_cli(&cli).unwrap();

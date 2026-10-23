@@ -119,7 +119,7 @@ fn native(cpu: &str) {
     if std::env::var("OPFORGE_COMPARE_MEMORY").as_deref() == Ok("1") {
         memory(&runs[0]);
     }
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_ARITHMETIC cpu={cpu} source_bytes={} output_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={}", source.len(), expected.len(), runs[0].start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total());
 }
 

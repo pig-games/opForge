@@ -55,7 +55,7 @@ class NativeTestModuleOwnershipTests(unittest.TestCase):
         root = self.make_root()
         main = root / "crates/opforge-asm/src/tests.rs"
         main.write_text(
-            main.read_text() + "#[test]\nfn native_harness_evidence_test() {}\n",
+            main.read_text() + f"#[test]\nfn {MODULES[0]}_test() {{}}\n",
             encoding="utf-8",
         )
         self.assertIn("still owns moved test functions", "\n".join(validate(root)))

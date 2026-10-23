@@ -20,15 +20,15 @@ fn prepare_component_probe_source(source_root: &Path, snapshot: &Path) {
     prepare_component_probe_source_for(
         source_root,
         snapshot,
-        "tests.amigaos.binary_lazy_audit_probe",
+        "opforge.tests.assembler.lazy_audit_probe",
     );
 }
 
 fn prepare_component_probe_source_for(source_root: &Path, snapshot: &Path, probe_module: &str) {
     copy_tree(&source_root.join("native"), &snapshot.join("native"));
-    let app = snapshot.join("native/motorola68000/amigaos/experimental/binary_app.asm");
+    let app = snapshot.join("native/motorola68000/amigaos/assembler/driver.asm");
     let text = fs::read_to_string(&app).unwrap();
-    let import = "\t.use experimental.amigaos.binary_assembly as assembly\n";
+    let import = "\t.use opforge.assembler.layout.assembly as assembly\n";
     assert_eq!(text.matches(import).count(), 1);
     let text = text.replace(
         import,
@@ -44,18 +44,17 @@ fn native_lazy_audit_probe_injection_preserves_reference_source() {
     let dir = scratch();
     let source = dir.0.join("reference");
     let snapshot = dir.0.join("probe");
-    let relative = "native/motorola68000/amigaos/experimental/binary_app.asm";
+    let relative = "native/motorola68000/amigaos/assembler/driver.asm";
     let app = source.join(relative);
     fs::create_dir_all(app.parent().unwrap()).unwrap();
-    let original =
-        "\t.use experimental.amigaos.binary_assembly as assembly\nprepare\t.block\n\trts\n";
+    let original = "\t.use opforge.assembler.layout.assembly as assembly\nprepare\t.block\n\trts\n";
     fs::write(&app, original).unwrap();
     prepare_component_probe_source(&source, &snapshot);
     assert_eq!(fs::read_to_string(app).unwrap(), original);
     let injected = fs::read_to_string(snapshot.join(relative)).unwrap();
     assert_eq!(
         injected
-            .matches("tests.amigaos.binary_lazy_audit_probe as lazyProbe")
+            .matches("opforge.tests.assembler.lazy_audit_probe as lazyProbe")
             .count(),
         1
     );
@@ -65,19 +64,19 @@ fn native_lazy_audit_probe_injection_preserves_reference_source() {
     prepare_component_probe_source_for(
         &source,
         &lifetime_snapshot,
-        "tests.amigaos.capture_lifetime_probe",
+        "opforge.tests.assembler.capture_lifetime_probe",
     );
     let lifetime = fs::read_to_string(lifetime_snapshot.join(relative)).unwrap();
-    assert!(lifetime.contains(".use tests.amigaos.capture_lifetime_probe as lazyProbe"));
-    assert!(!lifetime.contains("tests.amigaos.binary_lazy_audit_probe"));
+    assert!(lifetime.contains(".use opforge.tests.assembler.capture_lifetime_probe as lazyProbe"));
+    assert!(!lifetime.contains("opforge.tests.assembler.lazy_audit_probe"));
     let disk_snapshot = dir.0.join("disk-probe");
     prepare_component_probe_source_for(
         &source,
         &disk_snapshot,
-        "tests.amigaos.capture_disk_store_probe",
+        "opforge.tests.assembler.capture_disk_store_probe",
     );
     let disk = fs::read_to_string(disk_snapshot.join(relative)).unwrap();
-    assert!(disk.contains(".use tests.amigaos.capture_disk_store_probe as lazyProbe"));
+    assert!(disk.contains(".use opforge.tests.assembler.capture_disk_store_probe as lazyProbe"));
     assert_eq!(fs::read_to_string(source.join(relative)).unwrap(), original);
 }
 
@@ -116,7 +115,7 @@ fn tree_digest(root: &Path) -> String {
 #[ignore = "builds the independent capture-store component probe outside target"]
 fn native_capture_store_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.capture_store_probe",
+        "opforge.tests.assembler.capture_store_probe",
         "OPFORGE_CAPTURE_STORE_SAVE_DIR",
         "capture-store-probe-memory.hunk",
     );
@@ -126,7 +125,7 @@ fn native_capture_store_probe_save_image() {
 #[ignore = "builds the independent disk capture-store component probe outside target"]
 fn native_capture_disk_store_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.capture_disk_store_probe",
+        "opforge.tests.assembler.capture_disk_store_probe",
         "OPFORGE_CAPTURE_DISK_STORE_SAVE_DIR",
         "capture-disk-store-probe-memory.hunk",
     );
@@ -136,7 +135,7 @@ fn native_capture_disk_store_probe_save_image() {
 #[ignore = "builds the incremental graph publication component probe outside target"]
 fn native_graph_publication_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.graph_publication_probe",
+        "opforge.tests.assembler.graph_publication_probe",
         "OPFORGE_GRAPH_PUBLICATION_SAVE_DIR",
         "graph-publication-probe-memory.hunk",
     );
@@ -146,7 +145,7 @@ fn native_graph_publication_probe_save_image() {
 #[ignore = "builds the independent ordered-record component probe outside target"]
 fn native_ordered_records_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.ordered_records_probe",
+        "opforge.tests.assembler.ordered_records_probe",
         "OPFORGE_ORDERED_RECORDS_SAVE_DIR",
         "ordered-records-probe-memory.hunk",
     );
@@ -156,7 +155,7 @@ fn native_ordered_records_probe_save_image() {
 #[ignore = "builds the bounded prepared-record store/view component probe outside target"]
 fn native_prepared_store_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.prepared_store_probe",
+        "opforge.tests.assembler.prepared_store_probe",
         "OPFORGE_PREPARED_STORE_SAVE_DIR",
         "prepared-store-probe-memory.hunk",
     );
@@ -242,7 +241,7 @@ fn native_prepared_store_reader_fs_uae() {
 #[ignore = "builds the bounded lexical sealing component probe outside target"]
 fn native_lexical_store_probe_save_image() {
     save_capture_store_probe(
-        "tests.amigaos.lexical_store_probe",
+        "opforge.tests.assembler.lexical_store_probe",
         "OPFORGE_LEXICAL_STORE_SAVE_DIR",
         "lexical-store-probe-memory.hunk",
     );
@@ -263,7 +262,7 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.0.join("probe-build"),
-        &snapshot.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &snapshot.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into(), "6502".into()]),
     )
     .unwrap();
@@ -274,7 +273,7 @@ fn save_capture_store_probe(probe_module: &str, destination_variable: &str, file
         "OPFORGE_PREPARATION_PROGRESS",
         "OPFORGE_CAPTURE_TELEMETRY",
     ];
-    if probe_module == "tests.amigaos.ordered_records_probe"
+    if probe_module == "opforge.tests.assembler.ordered_records_probe"
         && std::env::var_os("OPFORGE_ORDERED_RECORDS_EXPECT_REUSE").is_some()
     {
         defines.push("OPFORGE_ORDERED_RECORDS_EXPECT_REUSE");

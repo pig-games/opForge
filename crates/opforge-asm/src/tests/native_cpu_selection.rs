@@ -67,7 +67,7 @@ const CASES: &[Case<'static>] = &[
         name: "malformed-cpu",
         source: ".cpu\n",
         command: "Work:main.asm --bin Work:output.bin",
-        rejection: Some("compact CLI: cannot select initial target from root preamble"),
+        rejection: Some("opforge: cannot select initial target from root preamble"),
     },
     Case {
         name: "unknown-cpu",
@@ -176,7 +176,7 @@ fn native(breadth: bool) {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.join("build"),
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["68020".into()]),
     )
     .unwrap();

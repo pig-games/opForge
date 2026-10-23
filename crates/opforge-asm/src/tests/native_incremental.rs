@@ -80,20 +80,20 @@ fn run(action: Action) {
         original.clone()
     };
     let final_action = match action {
-        Action::Change => "C:Copy Work:changed.txt Work:library/leaf.asm\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache",
-        Action::Rebuild => "Work:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild",
+        Action::Change => "C:Copy Work:changed.txt Work:library/leaf.asm\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache",
+        Action::Rebuild => "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild",
         // Change only the timestamp; the bytes and extent remain identical.
-        Action::Touch => "C:SetDate Work:library/leaf.asm 1-Jan-2000 00:00:01\nEcho $RC >Work:touch.rc\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache",
+        Action::Touch => "C:SetDate Work:library/leaf.asm 1-Jan-2000 00:00:01\nEcho $RC >Work:touch.rc\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache",
     };
     // The runner wraps this entire sequence with its fresh start/done challenge.
     // Capture earlier exit codes explicitly so a later success cannot hide them.
     let quiet = if matches!(action, Action::Rebuild) {
-        "Work:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache --quiet >Work:quiet.txt *>Work:quiet.err\nEcho $RC >Work:quiet.rc\nC:Copy Work:build/module.bin Work:quiet.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache -q >Work:short-quiet.txt *>Work:short-quiet.err\nEcho $RC >Work:short-quiet.rc\nWork:build/opforge_compact --quiet=1 >Work:quiet-invalid.txt\nEcho $RC >Work:quiet-invalid.rc\nWork:build/opforge_compact Work:entry.asm -M Work:library --reference-modules >Work:reference.txt *>Work:reference.progress\nEcho $RC >Work:reference.rc\nC:Copy Work:build/module.bin Work:reference.bin\n"
+        "Work:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache --quiet >Work:quiet.txt *>Work:quiet.err\nEcho $RC >Work:quiet.rc\nC:Copy Work:build/module.bin Work:quiet.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache -q >Work:short-quiet.txt *>Work:short-quiet.err\nEcho $RC >Work:short-quiet.rc\nWork:build/opforge --quiet=1 >Work:quiet-invalid.txt\nEcho $RC >Work:quiet-invalid.rc\nWork:build/opforge Work:entry.asm -M Work:library --reference-modules >Work:reference.txt *>Work:reference.progress\nEcho $RC >Work:reference.rc\nC:Copy Work:build/module.bin Work:reference.bin\n"
     } else {
         ""
     };
     let command = format!(
-        "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt *>Work:cold.progress\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt *>Work:warm.progress\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{quiet}{final_action}"
+        "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt *>Work:cold.progress\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt *>Work:warm.progress\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\n{quiet}{final_action}"
     );
     let files = [
         OpforgeNativeCliGuestFile {

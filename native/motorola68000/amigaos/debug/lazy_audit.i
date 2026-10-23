@@ -2,8 +2,8 @@
 ; Opt-in passive shadow audit. Work requires only OPFORGE_LAZY_AUDIT.
 ; Reporting additionally uses the approved memory progress bridge.
 .ifdef OPFORGE_LAZY_AUDIT
-	.use debug.amigaos.lazy_audit as lazy_audit
-	.use debug.amigaos.lazy_units as lazy_units
+	.use opforge.debug.lazy_audit as lazy_audit
+	.use opforge.debug.lazy_units as lazy_units
 .endif
 
 LAZY_CLEAR	.macro  ; no parameters

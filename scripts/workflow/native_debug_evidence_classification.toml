@@ -5,111 +5,11 @@ level_e_can_close_completion = false
 
 [[artifacts]]
 id = "debug-contract-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/debug_contract_harness.asm"
+path = "native/motorola68000/amigaos/tests/debug/debug_contract_harness.asm"
 marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
 proof_level = "D"
 role = "permanent-contract"
 authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "opasm-progress-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/opasm_progress_harness.asm"
-marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "permanent-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "opasm-session-init-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/opasm_session_init_harness.asm"
-marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "permanent-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "opasm-session-init-helper"
-path = "crates/opforge-asm/src/fs_uae_smoke.rs"
-marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "focused-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "cli-debug-event-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/cli_debug_event_harness.asm"
-marker = "@opforge-evidence: level=D; role=permanent-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "permanent-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "macro-preprocessor-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/macro_preprocessor_harness.asm"
-marker = "@opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "focused-negative"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "macro-preprocessor-helper"
-path = "crates/opforge-asm/src/fs_uae_smoke.rs"
-marker = "@opforge-evidence: level=D; role=focused-negative; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "focused-negative"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "pipeline-select-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/pipeline_select_harness.asm"
-marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "focused-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "pipeline-select-helper"
-path = "crates/opforge-asm/src/fs_uae_smoke.rs"
-marker = "@opforge-evidence: level=D; role=focused-contract; authority=focused-contract; lifecycle=permanent"
-proof_level = "D"
-role = "focused-contract"
-authority = "focused-contract"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "macro-cli-debug-event-harness"
-path = "native/motorola68000/amigaos/test-harnesses/debug/macro_cli_debug_event_harness.asm"
-marker = "@opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent"
-proof_level = "E"
-role = "diagnostic"
-authority = "none"
-lifecycle = "permanent"
-deletion_condition = ""
-
-[[artifacts]]
-id = "macro-cli-debug-event-helper"
-path = "crates/opforge-asm/src/fs_uae_smoke.rs"
-marker = "@opforge-evidence: level=E; role=diagnostic; authority=none; lifecycle=permanent"
-proof_level = "E"
-role = "diagnostic"
-authority = "none"
 lifecycle = "permanent"
 deletion_condition = ""
 

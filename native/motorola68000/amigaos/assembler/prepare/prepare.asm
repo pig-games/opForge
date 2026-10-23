@@ -1,0 +1,1050 @@
+; Compile scalar expressions while keeping package operand syntax outside them.
+; @opforge-owner: opforge.assembler.prepare.prepare
+
+	.module opforge.assembler.prepare.prepare
+	.cpu 68020
+	.use opforge.packages.format as package
+	.use opforge.assembler.layout.state as state
+	.use opforge.assembler.source.records as source
+	.use opforge.assembler.prepare.expression as expression
+	.use opforge.assembler.prepare.operand_wrappers as wrappers
+	.use opforge.assembler.prepare.products as products
+	.use opforge.assembler.prepare.nested_operands as nested
+	.use opforge.vm.prvm.packed_loop as loop_parser
+	.use opforge.vm.prvm.abi as loop_abi
+	.use opforge.vm.prvm.packed_branch as branches
+	.use opforge.vm.prvm.packed_text as textGrammar
+	.use opforge.vm.prvm.macro_runtime as textVm
+	.pub
+	.section code, kind=code
+
+; A0=valid writer record, A1=distinct 256-byte output, A2=validated package.
+; Returns D0/CCR status, D1=record length (zero on failure). Other registers
+; preserved. Uses 256 bytes temporary stack storage, released on all paths.
+; Label/statement names and register/member wrappers remain numeric tokens.
+line	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	moveq #0, d2
+	bra.w lineMode
+	.bend  ; line
+
+; Same ABI; defer all constant evaluation to runtime branch selection.
+lineUnfolded	.block
+	movem.l d2-d7/a0-a6, -(sp)
+	moveq #1, d2
+	bra.w lineMode
+	.bend  ; lineUnfolded
+	.priv
+UNFOLDED = 256
+; Statement heads may follow a nine-byte label prefix, not just the header.
+SOURCE_RECORD = UNFOLDED+2
+LINE_SCRATCH_BYTES = SOURCE_RECORD+4
+lineMode	.block
+	suba.w #LINE_SCRATCH_BYTES, sp
+	movea.l sp, a6
+	move.w d2, UNFOLDED(a6)
+	move.l a0, SOURCE_RECORD(a6)
+	move.l d2, d0
+	jsr expression.deferCompile
+	movea.l a1, a5
+	movea.l a1, a3
+	lea 256(a1), a4
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	cmpi.w #4, d0
+	blo.w bad
+	movea.l a0, a1
+	adda.w d0, a1
+	btst #4, 1(a0)
+	bne.w layoutControl
+	moveq #4, d6
+	bsr.w copy
+	bne.w bad
+	; Only the statement prefix may define a label.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w statement
+	cmpi.b #1, (a0)
+	bhi.w statement
+	cmpi.b #source.TOKEN_STRUCT_DECLARATION, 4(a0)
+	beq.w structDeclaration
+	cmpi.b #34, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_MUTABLE_DECLARATION, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_CONDITIONAL_DECLARATION, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 4(a0)
+	beq.w constant
+	cmpi.b #source.TOKEN_UPDATE_FIRST, 4(a0)
+	blo.w prefixLabel
+	cmpi.b #source.TOKEN_UPDATE_LAST, 4(a0)
+	bls.w constant
+prefixLabel
+	cmpi.b #5, 4(a0)
+	bne.w statement
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+statement
+	cmpa.l a1, a0
+	beq.w complete
+	cmpi.b #7, (a0)
+	beq.w directive
+	bsr.w name
+	bne.w bad
+	bra.w operands
+layoutControl
+	move.l a1, d6
+	sub.l a0, d6
+	bsr.w copy
+	bne.w bad
+	bra.w complete
+structDeclaration
+	move.l a1, d6
+	sub.l a0, d6
+	cmpi.l #9, d6
+	bne.w bad
+	bsr.w copy
+	bne.w bad
+	bra.w complete
+constant
+	; Assignment is a shared statement, independent of the package operand grammar.
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+directive
+	; Numeric PRVM policy owns expression conditional grammar.
+	movem.l d1/a0-a1, -(sp)
+	movea.l SOURCE_RECORD(a6), a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	adda.l package.Header.BranchPlan(a2), a1
+	jsr branches.classify
+	move.l d1, d7
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	bne.w bad
+	tst.l d7
+	beq.w ordinaryDirective
+	move.l d7, d4
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	cmpi.w #branches.CASE, d4
+	beq.w scalar
+	cmpi.w #branches.MATCH, d4
+	beq.w oneScalar
+	cmpi.w #branches.ELSE, d4
+	bhs.w noOperands
+	bra.w oneScalar
+ordinaryDirective
+	movem.l d1/a0-a1, -(sp)
+	movea.l SOURCE_RECORD(a6), a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	move.l package.Header.LoopPlanBytes(a2), d1
+	adda.l package.Header.LoopPlan(a2), a1
+	jsr loop_parser.classify
+	move.l d0, d7
+	movem.l (sp)+, d1/a0-a1
+	cmpi.l #loop_abi.PRVM_LOOP_MALFORMED, d7
+	beq.w bad
+	cmpi.l #loop_abi.PRVM_LOOP_WHILE, d7
+	beq.w scalarLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d7
+	beq.w valueLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BWHILE, d7
+	beq.w scalarLoop
+	cmpi.l #loop_abi.PRVM_LOOP_ENDFOR, d7
+	beq.w closingLoop
+	cmpi.l #loop_abi.PRVM_LOOP_ENDWHILE, d7
+	beq.w closingLoop
+	bra.w ordinaryLoopDirective
+valueLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w loopHeader
+scalarLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w oneScalar
+closingLoop
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	bra.w noOperands
+ordinaryLoopDirective
+	bsr.w prepareTextDirective
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w complete
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w name
+	bne.w bad
+	move.w d7, d4
+	cmp.w package.Header.CpuDirective(a2), d7
+	beq.w copyRest
+	cmp.w package.Header.EndDirective(a2), d7
+	beq.w copyRest
+	cmp.w package.Header.ForDirective(a2), d7
+	beq.w loopHeader
+	cmp.w package.Header.EndforDirective(a2), d7
+	beq.w noOperands
+	cmp.w package.Header.OrgDirective(a2), d7
+	beq.w scalar
+	cmp.w package.Header.AlignDirective(a2), d7
+	beq.w oneScalar
+	cmp.w package.Header.DsDirective(a2), d7
+	beq.w oneScalar
+	cmp.w package.Header.ResDirective(a2), d7
+	beq.w reserve
+	cmp.w package.Header.EmitDirective(a2), d7
+	beq.w emitUnit
+	cmp.w package.Header.ByteDirective(a2), d7
+	beq.w dataScalar
+	cmp.w package.Header.WordDirective(a2), d7
+	beq.w dataScalar
+	cmp.w package.Header.LongDirective(a2), d7
+	beq.w dataScalar
+	movem.l a0, -(sp)
+	move.w d7, d0
+	jsr state.find
+	movem.l (sp)+, a0
+	tst.l d0
+	bne.w bad
+	bra.w copyRest
+dataScalar
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #3, (a0)
+	bne.w scalar
+	; A complete quoted data operand keeps string emission. If more syntax
+	; follows the string leaf, the shared scalar compiler owns the expression.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a0), d1
+	addq.l #2, d1
+	cmp.l d0, d1
+	bhi.w bad
+	beq.w dataString
+	cmpi.b #4, 0(a0, d1.l)
+	bne.w scalar
+dataString
+	bsr.w string
+	bne.w bad
+	bra.w scalarTail
+scalar
+	; Shared directive arguments are always expressions, never register names.
+	bsr.w compile
+	bne.w bad
+	bra.w scalarTail
+oneScalar
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+loopHeader
+	; PRVM selects the envelope; EXVM compiles its complete value expression.
+	movem.l d1-d2/a0-a1, -(sp)
+	movea.l SOURCE_RECORD(a6), a0
+	moveq #0, d0
+	move.b (a0), d0
+	addq.w #1, d0
+	movea.l a2, a1
+	adda.l package.Header.LoopPlan(a2), a1
+	move.l package.Header.LoopPlanBytes(a2), d1
+	jsr loop_parser.classify
+	cmpi.l #loop_abi.PRVM_LOOP_MATCHED, d0
+	beq.w classifiedLoop
+	cmpi.l #loop_abi.PRVM_LOOP_BFOR, d0
+	bne.w loopFailed
+classifiedLoop
+	tst.l d1
+	bmi.w countedLoop
+	move.b #source.TOKEN_ITERATOR_BINDING, (a3)+
+	move.w d1, (a3)+
+	movea.l SOURCE_RECORD(a6), a0
+	adda.l d2, a0
+	movea.l 12(sp), a1
+	tst.w UNFOLDED(a6)
+	beq.w ordinaryLoopValue
+	jsr expression.compileValueUnfolded
+	bra.w loopCompiled
+ordinaryLoopValue
+	jsr expression.compileValue
+	bra.w loopCompiled
+countedLoop
+	movea.l 8(sp), a0
+	movea.l 12(sp), a1
+	tst.w UNFOLDED(a6)
+	beq.w ordinaryLoopCount
+	jsr expression.compileUnfolded
+	bra.w loopCompiled
+ordinaryLoopCount
+	jsr expression.compile
+loopCompiled
+	tst.l d0
+	bne.w loopFailed
+	cmpa.l a1, a0
+	bne.w loopFailed
+	adda.w #16, sp
+	bra.w complete
+loopFailed
+	adda.w #16, sp
+	bra.w bad
+noOperands
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+emitUnit
+	; Preserve package-owned named units. All other unit expressions use the
+	; shared scalar compiler; the data VM owns the complete operand grammar.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #5, d0
+	blo.w bad
+	cmpi.b #1, (a0)
+	bhi.w scalar
+	tst.b 3(a0)
+	bne.w scalar
+	cmpi.b #4, 4(a0)
+	bne.w scalar
+	moveq #0, d0
+	move.w 1(a0), d0
+	cmp.w package.Header.ByteDirective(a2), d0
+	beq.w namedUnit
+	cmp.w package.Header.WordDirective(a2), d0
+	beq.w namedUnit
+	cmp.w package.Header.LongDirective(a2), d0
+	bne.w scalar
+namedUnit
+	moveq #4, d6
+	bsr.w copy
+	bne.w bad
+	bra.w scalarTail
+reserve
+	bsr.w name
+	bne.w bad
+	cmp.w package.Header.ByteDirective(a2), d7
+	beq.w reserveComma
+	cmp.w package.Header.WordDirective(a2), d7
+	beq.w reserveComma
+	cmp.w package.Header.LongDirective(a2), d7
+	bne.w bad
+reserveComma
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #4, (a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w compile
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+	bra.w complete
+scalarTail
+	cmpa.l a1, a0
+	beq.w complete
+	cmpi.b #4, (a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	cmpi.w #branches.CASE, d4
+	beq.w scalar
+	cmp.w package.Header.OrgDirective(a2), d4
+	beq.w scalar
+	; .emit consumes scalar VM values, including encoded string literals.
+	; Aggregate string preservation belongs only to .byte/.word/.long.
+	cmp.w package.Header.EmitDirective(a2), d4
+	beq.w scalar
+	bra.w dataScalar
+operands
+	cmpa.l a1, a0
+	beq.w complete
+	cmpi.b #8, (a0)
+	bne.w operand
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	; Immediate operands are scalar even when a reserved name follows.
+	bra.w expressionOperand
+operand
+	btst #1, package.Header.TargetFlags+1(a2)
+	beq.w ordinaryOperand
+	move.l a6, -(sp)
+	jsr nested.needs
+	cmpi.l #2, d0
+	beq.w malformedNested
+	tst.l d0
+	beq.w ordinaryNested
+	move.l a1, -(sp)
+	movea.l a6, a1
+	jsr nested.prepare
+	movea.l (sp)+, a1
+	movea.l (sp)+, a6
+	tst.l d0
+	bne.w bad
+	bra.w operandDone
+malformedNested
+	movea.l (sp)+, a6
+	bra.w bad
+ordinaryNested
+	movea.l (sp)+, a6
+ordinaryOperand
+	cmpi.b #7, (a0)
+	beq.w dottedCall
+	cmpi.b #14, (a0)
+	beq.w parenthesizedRegister
+	cmpi.b #19, (a0)  ; preserve unary/indirect token structure
+	beq.w prefixedName
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w expressionOperand
+	cmpi.b #1, (a0)
+	bhi.w expressionOperand
+	cmpi.l #5, d0
+	blo.w bareName
+	cmpi.b #19, 4(a0)
+	beq.w nameSequence
+	cmpi.b #22, 4(a0)
+	beq.w nameSequence
+bareName
+	moveq #0, d7
+	move.b 1(a0), d7
+	lsl.w #8, d7
+	move.b 2(a0), d7
+	cmp.w package.Header.NameCount(a2), d7
+	bhs.w expressionOperand
+	; Keep package-defined register IDs intact; the package validates the class.
+	bsr.w name
+	bne.w bad
+	bra.w operandDone
+dottedCall
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w bad
+	cmpi.b #1, 1(a0)
+	bhi.w bad
+	cmpi.b #14, 5(a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w name
+	bne.w bad
+	bsr.w callTail
+	bne.w bad
+	bra.w operandDone
+parenthesizedRegister
+	; Operand binding has already selected package register roles. Preserve
+	; those numeric identities before compiling any scalar wrapper; source
+	; symbols retain separate IDs even when their spelling matches a register.
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	blo.w scalarParenthesis
+	cmpi.b #1, 1(a0)
+	bhi.w scalarParenthesis
+	cmpi.b #4, 5(a0)
+	beq.w parenthesizedTuple
+	cmpi.b #15, 5(a0)
+	bne.w scalarParenthesis
+	move.l a0, -(sp)
+	lea 1(a0), a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w scalarParenthesis
+	moveq #6, d6
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #7, d0
+	blo.w parenthesizedReady
+	cmpi.b #18, 6(a0)  ; retain the package-matched postfix wrapper
+	bne.w parenthesizedReady
+	moveq #7, d6
+parenthesizedReady
+	bsr.w copy
+	bne.w bad
+	bra.w operandDone
+parenthesizedTuple
+	btst #0, package.Header.TargetFlags+1(a2)
+	bne.w scalarParenthesis
+namedTuple
+	bsr.w tupleTail
+	bne.w bad
+	bra.w operandDone
+scalarParenthesis
+	btst #0, package.Header.TargetFlags+1(a2)
+	beq.w expressionOperand
+	jsr wrappers.prepare
+	bne.w bad
+	bra.w operandDone
+
+nameSequence
+	bsr.w validateNameSequence
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w expressionOperand
+	bsr.w copy
+	bne.w bad
+	bra.w operandDone
+prefixedName
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #7, d0
+	blo.w expressionOperand
+	cmpi.b #14, 1(a0)
+	bne.w expressionOperand
+	cmpi.b #1, 2(a0)
+	bhi.w expressionOperand
+	cmpi.b #15, 6(a0)
+	bne.w expressionOperand
+	move.l a0, -(sp)
+	lea 2(a0), a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w bad
+	tst.l d0
+	bne.w expressionOperand
+	moveq #7, d6
+	bsr.w copy
+	bne.w bad
+	bra.w operandDone
+expressionOperand
+	bsr.w compile
+	bne.w bad
+operandDone
+	cmpa.l a1, a0
+	beq.w complete
+	cmpi.b #14, (a0)
+	bne.w operandDelimiter
+	bsr.w tupleTail
+	bne.w bad
+	cmpa.l a1, a0
+	beq.w complete
+operandDelimiter
+	cmpi.b #4, (a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	cmpa.l a1, a0
+	beq.w bad
+	bra.w operands
+copyRest
+	move.l a1, d6
+	sub.l a0, d6
+	bsr.w copy
+	bne.w bad
+complete
+	move.l a3, d1
+	sub.l a5, d1
+	move.l d1, d0
+	subq.l #1, d0
+	move.b d0, (a5)
+	moveq #0, d0
+	bra.w done
+bad
+	clr.b (a5)
+	moveq #0, d1
+	moveq #1, d0
+done
+	move.l d0, -(sp)
+	moveq #0, d0
+	jsr expression.deferCompile
+	move.l (sp)+, d0
+	adda.w #LINE_SCRATCH_BYTES, sp
+	movem.l (sp)+, d2-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; lineMode
+	.priv
+
+; Copy D6 bounded input bytes; advances A0/A3, clobbers D0/D6. CCR=status.
+copy	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmp.l d6, d0
+	blo.w bad
+	move.l a4, d0
+	sub.l a3, d0
+	cmp.l d6, d0
+	blo.w bad
+loop
+	tst.l d6
+	beq.w ok
+	move.b (a0)+, (a3)+
+	subq.l #1, d6
+	bra.w loop
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; copy
+
+; Preserve tuple boundaries and prepare each bounded leaf without selecting
+; target classes or scales. A0/A3 advance; D0/CCR=status, other registers retained.
+tupleTail	.block
+	moveq #0, d0
+	bra.w tuplePrepare
+	.bend  ; tupleTail
+
+; Call arguments retain proven register wrappers for package projections.
+callTail	.block
+	moveq #1, d0
+	bra.w tuplePrepare
+	.bend  ; callTail
+
+tuplePrepare	.block
+	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	move.l d0, d2
+	cmpa.l a1, a0
+	bhs.w bad
+	cmpi.b #14, (a0)
+	bne.w bad
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	moveq #0, d5
+next
+	movea.l a0, a6
+	moveq #0, d4
+scan
+	cmpa.l a1, a6
+	bhs.w bad
+	moveq #0, d0
+	move.b (a6), d0
+	cmpi.b #14, d0
+	beq.w opening
+	cmpi.b #15, d0
+	beq.w closing
+	tst.l d4
+	bne.w token
+	cmpi.b #4, d0
+	beq.w leafReady
+	bra.w token
+opening
+	addq.w #1, d4
+	bra.w token
+closing
+	tst.l d4
+	beq.w leafReady
+	subq.w #1, d4
+token
+	moveq #1, d1
+	cmpi.b #source.TOKEN_WIDE_NUMBER, d0
+	beq.w wideNumber
+	cmpi.b #2, d0
+	beq.w number
+	bhi.w string
+	moveq #4, d1
+	bra.w bounded
+number
+	moveq #source.NUMBER_BYTES, d1
+	bra.w bounded
+wideNumber
+	moveq #source.WIDE_NUMBER_BYTES, d1
+	bra.w bounded
+string
+	cmpi.b #3, d0
+	bne.w bounded
+	move.l a1, d0
+	sub.l a6, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d1
+	move.b 1(a6), d1
+	addq.l #2, d1
+bounded
+	move.l a1, d0
+	sub.l a6, d0
+	cmp.l d1, d0
+	blo.w bad
+	adda.l d1, a6
+	bra.w scan
+leafReady
+	cmpa.l a0, a6
+	beq.w bad
+	addq.w #1, d5
+	cmpi.w #255, d5
+	bhi.w bad
+	move.l a1, -(sp)
+	movea.l a6, a1
+	tst.l d2
+	beq.w scalarLeaf
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #6, d0
+	bne.w scalarLeaf
+	cmpi.b #14, (a0)
+	bne.w scalarLeaf
+	cmpi.b #15, 5(a0)
+	bne.w scalarLeaf
+	move.l a0, -(sp)
+	addq.l #1, a0
+	bsr.w packageRegister
+	movea.l (sp)+, a0
+	cmpi.l #2, d0
+	beq.w leafFailed
+	tst.l d0
+	bne.w scalarLeaf
+	moveq #6, d6
+	bsr.w copy
+	bra.w leafFailed
+scalarLeaf
+	jsr products.prepare
+leafFailed
+	tst.l d0
+	movea.l (sp)+, a1
+	bne.w bad
+	cmpa.l a6, a0
+	bne.w bad
+	move.b (a0), d7
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	cmpi.b #15, d7
+	bne.w next
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d7/a1-a2/a4-a6
+	tst.l d0
+	rts
+	.bend  ; tuplePrepare
+
+; Copy one numeric name, return its ID in D7. Other clobbers as copy.
+name	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w bad
+	cmpi.b #1, (a0)
+	bhi.w bad
+	moveq #0, d7
+	move.b 1(a0), d7
+	lsl.w #8, d7
+	move.b 2(a0), d7
+	moveq #4, d6
+	bra.w copy
+bad
+	moveq #1, d0
+	rts
+	.bend  ; name
+
+; Recognize a package-register name/range/list without modifying the source
+; or output. Non-register subtraction stays on the scalar expression path.
+; D0=0 and D6=byte count for a list, 1 for another expression, 2 bad package.
+validateNameSequence	.block
+	movem.l d1-d5/a0/a3, -(sp)
+	move.l a0, d5
+	movea.l a0, a3
+nextName
+	movea.l a3, a0
+	bsr.w packageRegister
+	tst.l d0
+	bne.w done
+	adda.w #4, a3
+	cmpa.l a1, a3
+	beq.w valid
+	cmpi.b #4, (a3)
+	beq.w valid
+	cmpi.b #19, (a3)
+	beq.w separator
+	cmpi.b #22, (a3)
+	bne.w other
+separator
+	addq.l #1, a3
+	bra.w nextName
+valid
+	move.l a3, d6
+	sub.l d5, d6
+	moveq #0, d0
+	bra.w done
+other
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d5/a0/a3
+	rts
+	.bend  ; validateNameSequence
+
+; A0=name token,A1=end,A2=prepared package. D0=0 known register, 1 other,
+; 2 malformed package; all other registers preserved.
+packageRegister	.block
+	movem.l d1-d4/a3, -(sp)
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #4, d0
+	blo.w other
+	cmpi.b #1, (a0)
+	bhi.w other
+	tst.b 3(a0)
+	bne.w other
+	moveq #0, d1
+	move.w 1(a0), d1
+	move.l package.Header.RegisterRows(a2), d0
+	move.l package.Header.RegisterCount(a2), d3
+	cmpi.l #$ffff, d3
+	bhi.w malformed
+	move.l d3, d4
+	mulu.w #6, d4
+	add.l d0, d4
+	bcs.w malformed
+	cmp.l package.Header.Bytes(a2), d4
+	bhi.w malformed
+	movea.l a2, a3
+	adda.l d0, a3
+scan
+	tst.l d3
+	beq.w other
+	cmp.w (a3), d1
+	beq.w known
+	addq.l #6, a3
+	subq.l #1, d3
+	bra.w scan
+known
+	moveq #0, d0
+	bra.w done
+other
+	moveq #1, d0
+	bra.w done
+malformed
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d4/a3
+	tst.l d0
+	rts
+	.bend  ; packageRegister
+
+; Shared TextPlan owns operand roles before runtime encoding.
+; D0=0 no match,1 prepared,2 malformed. A0/A3 advance for a match only.
+prepareTextDirective	.block
+	movem.l d1-d7/a1-a2/a4-a6, -(sp)
+	move.l a0, -(sp)
+	lea TextRequest, a0
+	move.l #loop_abi.PRVM_MAGIC_OPRP, loop_abi.PRVM_FRAME_MAGIC(a0)
+	move.w #loop_abi.PRVM_REQUEST_FRAME_SIZE, loop_abi.PRVM_FRAME_FRAME_SIZE(a0)
+	move.w #loop_abi.PRVM_ENTRY_KIND_PACKED_TEXT, loop_abi.PRVM_FRAME_ENTRY_KIND(a0)
+	move.l SOURCE_RECORD(a6), loop_abi.PRVM_FRAME_SOURCE_PTR(a0)
+	movea.l SOURCE_RECORD(a6), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	move.l d0, loop_abi.PRVM_FRAME_SOURCE_LEN(a0)
+	adda.l d0, a1
+	move.l package.Header.TextPlan(a2), d0
+	add.l a2, d0
+	move.l d0, loop_abi.PRVM_FRAME_PROGRAM_PTR(a0)
+	move.l package.Header.TextPlanBytes(a2), loop_abi.PRVM_FRAME_PROGRAM_LEN(a0)
+	move.l #TextResults, loop_abi.PRVM_FRAME_RESULT_PTR(a0)
+	move.l #TEXT_RESULT_BYTES, loop_abi.PRVM_FRAME_RESULT_CAPACITY(a0)
+	move.l #65536, loop_abi.PRVM_FRAME_STEP_BUDGET(a0)
+	move.l #loop_abi.PRVM_REQUEST_FRAME_SIZE, d0
+	movem.l a1-a2, -(sp)
+	jsr textVm.run
+	movem.l (sp)+, a1-a2
+	movea.l (sp)+, a0
+	bne.w bad
+	tst.l d1
+	beq.w noMatch
+	moveq #5, d6
+	bsr.w copy
+	bne.w bad
+	move.l TextResults+loop_abi.PRVM_TEXT_OPERAND_COUNT, d4
+	moveq #0, d7
+loop
+	movea.l SOURCE_RECORD(a6), a1
+	moveq #0, d0
+	move.b (a1), d0
+	addq.l #1, d0
+	adda.l d0, a1
+	cmp.l d4, d7
+	bcc.w prepared
+	tst.l d7
+	beq.w span
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+span
+	move.l d7, d0
+	addq.l #1, d0
+	lsl.l #5, d0
+	lea TextResults, a1
+	adda.l d0, a1
+	move.l loop_abi.PRVM_TEXT_OPERAND_BYTES(a1), d6
+	cmpi.w #textGrammar.EXPRESSION, loop_abi.PRVM_TEXT_OPERAND_TYPE(a1)
+	beq.w expression
+	movea.l a0, a1
+	adda.l d6, a1
+	bsr.w copy
+	bne.w bad
+	bra.w next
+expression
+	movea.l a0, a1
+	adda.l d6, a1
+	movem.l d4/d7/a1, -(sp)
+	bsr.w compile
+	move.l d0, d1
+	movem.l (sp)+, d4/d7/a1
+	tst.l d1
+	bne.w bad
+	cmpa.l a1, a0
+	bne.w bad
+next
+	addq.l #1, d7
+	bra.w loop
+prepared
+	moveq #1, d0
+	bra.w done
+noMatch
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #2, d0
+done
+	movem.l (sp)+, d1-d7/a1-a2/a4-a6
+	tst.l d0
+	rts
+	.bend  ; prepareTextDirective
+
+; Keep every complete decoded string as a data operand. Runtime text policy
+; owns empty strings and one-byte strings as well. No source text is consulted.
+; A0 advances over the complete bounded string token.
+string	.block
+	move.l a1, d0
+	sub.l a0, d0
+	cmpi.l #2, d0
+	blo.w bad
+	moveq #0, d6
+	move.b 1(a0), d6
+	move.l d6, d1
+	addq.l #2, d1
+	cmp.l d1, d0
+	blo.w bad
+	move.l d1, d6
+	bra.w copy
+
+bad
+	moveq #1, d0
+	rts
+	.bend  ; string
+
+; Compile through bounded scratch, then preserve a member wrapper when a
+; parenthesized scalar or numeric literal is followed by .<package name>.
+; Normalize both spellings to the same packed wrapper without consulting text.
+; A0 advances; A3 receives compiled bytes. D0/status, D5-D7 scratch.
+compile	.block
+	cmpa.l a1, a0
+	bhs.w bad
+	moveq #0, d5
+	move.b (a0), d5
+	movem.l a3-a4, -(sp)
+	movea.l a6, a3
+	lea 256(a6), a4
+	tst.w UNFOLDED(a6)
+	bne.w unfoldedCompile
+	; Ignored declarations retain checked compact syntax and references, but
+	; their RHS must never be evaluated, including during constant folding.
+	cmpi.b #1, 4(a5)
+	bhi.w ordinaryCompile
+	cmpi.b #source.TOKEN_IGNORED_DECLARATION, 8(a5)
+	bne.w ordinaryCompile
+unfoldedCompile
+	jsr expression.compileUnfolded
+	bra.w compiled
+ordinaryCompile
+	jsr expression.compile
+compiled
+	move.l a3, d6
+	sub.l a6, d6
+	movem.l (sp)+, a3-a4
+	tst.l d0
+	bne.w bad
+	moveq #0, d7
+	cmpa.l a1, a0
+	bhs.w ready
+	cmpi.b #7, (a0)
+	bne.w ready
+	cmpi.b #14, d5
+	beq.w memberRoot
+	cmpi.b #2, d5
+	bne.w bad
+memberRoot
+	moveq #1, d7
+ready
+	move.l a4, d0
+	sub.l a3, d0
+	sub.l d6, d0
+	bcs.w bad
+	tst.l d7
+	beq.w payload
+	cmpi.l #7, d0
+	blo.w bad
+	move.b #14, (a3)+
+payload
+	movea.l a6, a4
+loop
+	move.b (a4)+, (a3)+
+	subq.l #1, d6
+	bne.w loop
+	lea 256(a5), a4
+	tst.l d7
+	beq.w ok
+	move.b #15, (a3)+
+	moveq #1, d6
+	bsr.w copy
+	bne.w bad
+	bsr.w name
+	bne.w bad
+	cmpi.b #source.SYNTAX_MEMBER_QUALIFIER, source.NameToken.Qualifier-source.NAME_TOKEN_BYTES(a3)
+	bne.w bad
+	clr.b -1(a3)  ; acquisition role cannot escape into persisted operands
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; compile
+	.endsection
+	.section bss, kind=bss
+TEXT_RESULT_BYTES = (textGrammar.MAX_OPERANDS+1)*loop_abi.PRVM_RESULT_RECORD_SIZE
+TextRequest	.res byte, loop_abi.PRVM_REQUEST_FRAME_SIZE
+TextResults	.res byte, TEXT_RESULT_BYTES
+	.endsection
+	.endmodule

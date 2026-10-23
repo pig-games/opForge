@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 const NAME_BYTES: u32 = 128;
 const NAME_COUNT: u32 = 10_000;
 const BEFORE_ARENA_BYTES: u32 = 1 << 20;
-const HARNESS: &str =
-    "native/motorola68000/amigaos/test-harnesses/experimental/binary_scope_arena_harness.asm";
+const HARNESS: &str = "native/motorola68000/amigaos/tests/assembler/scope_arena_harness.asm";
 
 struct Scratch(PathBuf);
 impl Drop for Scratch {
@@ -34,6 +33,10 @@ fn assemble(root: &Path) -> Vec<u8> {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

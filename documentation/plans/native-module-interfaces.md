@@ -2,6 +2,10 @@
 
 ## Current architecture
 
+The promoted product's current full cold/incremental qualification is recorded in
+the [native assembler plan](native-runtime-reset.md#current-product-state). Earlier
+measurements below retain their own source/configuration scope.
+
 Current-build `.ofm` objects carry numeric assembly interfaces alongside linker
 data. `OFMA` is the checked interface directory and dependency/import map;
 `OFMS` stores semantic exports, members, names, and compound-value arenas;
@@ -16,7 +20,7 @@ import, and filename directories. Dependency rows are 8 bytes (filename offset
 and length); import rows are 8 bytes (external dependency ordinal and entity ID).
 Import ordinals are zero-based; template closure origins reserve zero for self
 and encode an external ordinal plus one. The checked layouts are defined in
-[the interface container](../../native/motorola68000/amigaos/experimental/binary_module_iface.asm).
+[the interface container](../../native/motorola68000/amigaos/assembler/modules/assembly_interface.asm).
 
 The producer closes and writes each module interface. Consumers use a shared
 provider and registry to resolve numeric bindings on demand, while the final
@@ -41,7 +45,7 @@ build generations, configuration identity and the pointer-free publication
 inventory needed to recreate current-build section and linker bindings. The
 OFMI/OFMA/OFMS/OFTM layouts themselves remain unchanged.
 
-The compact CLI reports module processing and timed assembly/reuse through its
+The native CLI reports module processing and timed assembly/reuse through its
 process error stream. Two caller-owned progress frames use 1,360 bytes of static
 storage and allocate no heap; DateStamp is sampled only at phase boundaries.
 `-q`/`--quiet` suppresses progress and the incremental summary. A private fallback
@@ -158,7 +162,7 @@ paired host command interval is 1,015.101 s, consistent with the 1,014 s guest
 total at one-second clock resolution. This single pair shows 89.3% less runtime
 (9.35x speedup). It uses the same 273-file source manifest and embedded m68020
 package, release instrumentation disabled, disk capture in `scratch`, and source
-output `build/opforge_compact`. Hardware memory remains unmeasured/unrestricted;
+output `build/opforge`. Hardware memory remains unmeasured/unrestricted;
 the FS-UAE heap figures above are not hardware memory measurements.
 
 The prepared case identity matches the reported
@@ -208,7 +212,7 @@ and borrows section payloads directly. It never constructs a second full Hunk
 image. The generator owns no heap; its 44-byte runtime frame borrows stable
 parts/fixups until synchronous output completes. Hunk-specific CLI selection
 and relocation adaptation live in
-[binary_app_hunk_output.i](../../native/motorola68000/amigaos/experimental/binary_app_hunk_output.i).
+[binary_app_hunk_output.i](../../native/motorola68000/amigaos/assembler/driver_hunk_output.i).
 The unchanged `binary_hunk_output.build` remains the validating/reference
 serializer; focused native tests compare both implementations and Rust, including
 64/65-byte buffers, interleaved relocation targets, padding, BSS and repeated output.

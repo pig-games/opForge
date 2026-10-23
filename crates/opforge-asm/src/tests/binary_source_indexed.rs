@@ -208,7 +208,7 @@ fn native_source(source: String) {
     };
     assert_eq!(runs.len(), 1);
     assert!(runs[0].success && runs[0].protocol_completed);
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_INDEXED source_bytes={} output_bytes={} package_bytes={} image_bytes={} linked_reserved_bytes={} seconds={:?}", source.len(), expected.len(),package.len(),image.len(),hunk::allocation(image).unwrap().total(),runs[0].start_to_done_host_seconds);
 }
 

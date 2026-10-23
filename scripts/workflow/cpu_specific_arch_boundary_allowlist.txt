@@ -14,7 +14,7 @@ fixtures/** | * | Fixtures may contain CPU-specific source snippets and expectat
 reference/** | * | Reference outputs may contain CPU-specific source snippets and expectations.
 
 # Reviewed generic hash-table vocabulary, unrelated to CPU addressing modes.
-native/motorola68000/amigaos/experimental/binary_scope_layout.asm | indexed | State.IndexedCount counts source-name entries reachable from hash buckets for table growth; it implements no CPU addressing-mode semantics.
+native/motorola68000/amigaos/assembler/symbols/scope_layout.asm | indexed | State.IndexedCount counts source-name entries reachable from hash buckets for table growth; it implements no CPU addressing-mode semantics.
 
 # CLI metadata is user-facing capability text. This does not implement CPU behavior.
 crates/opforge-cli-core/src/cli.rs | 8080,8085,z80,6809,6309,6502,65c02,65816,45gs02,68020,intel8080,intel8085,mos6502,wdc65c02,wdc65816,csg45gs02 | CLI help/capability metadata lists supported CPUs but does not implement CPU semantics.
@@ -38,18 +38,12 @@ crates/opforge-core/src/parser_reporter.rs | lda | Inline parser-reporting examp
 crates/opforge-core/src/parser.rs | lda,sta,postincrement,abcd | Generic parser surface owns syntax-shape vocabulary but not target runtime semantics.
 
 # Reviewed native operand-shape ownership stays in the generic host bridge until package selectors consume it.
-native/motorola68000/amigaos/opasm/opasm_engine.asm | accumulator,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Native opasm engine stores reviewed generic operand-shape metadata without implementing target CPU semantics itself.
-native/motorola68000/amigaos/tkpkg/tkpkg_service.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Native tkpkg selector bridge owns reviewed generic operand-shape and rel8 plan metadata while target semantics remain package-defined.
-native/motorola68000/amigaos/tkpkg/tkpkg_selection_service.asm | accumulator,branch_offset,direct,immediate,implied,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x,register_direct | Item 5.6 moved the reviewed generic package-selector ownership unchanged from the service facade; Item 18 directly mirrors Rust package_shape_input tokens while target semantics remain package-defined.
-native/motorola68000/amigaos/tkpkg/tkpkg_operand_runtime.asm | accumulator,branch_offset,direct,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.1 moved the existing package-selected operand-plan interpreter unchanged out of the selection owner; target semantics remain package-defined.
-native/motorola68000/amigaos/tkpkg/tkpkg_encode_service.asm | accumulator,branch_offset,direct,displacement,immediate,indexed,indexed_indirect,indirect,indirect_indexed,indirect_x | Item 5.6.2 moved the existing package-table encoder unchanged out of the service facade; Item 19 renders Rust's exact generic branch-range diagnostic after the package candidate rejects its neutral displacement value, while target semantics remain package-defined.
-native/motorola68000/amigaos/tkpkg/tkpkg_operand_record_service.asm | absolute,displacement,immediate,indexed,indirect | Item 16 directly ports the CPU-neutral Rust PortableOperandRecord schema vocabulary; opaque package programs retain all target-family meaning.
 
 # Host-native ABI entrypoints intentionally retain stable 68000 surface names.
-native/motorola68000/amigaos/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.
-native/motorola68000/amigaos/tkvm/tkvm_control.asm | 68000 | TKVM control API intentionally retains stable 68000 ABI helper names for host-native callers.
-native/motorola68000/amigaos/tkvm/tkvm_runtime.asm | 68000 | TKVM runtime entrypoint intentionally retains the stable 68000 ABI name for host-native callers.
-native/motorola68000/amigaos/debug/debug_readme.md | 68000,68020,ccr | Native debug-module README documents the host architecture and user-visible flag-preservation ABI without adding generic CPU semantics.
+native/motorola68000/amigaos/vm/prvm/*.asm | 68000 | PRVM host-native runtime surfaces intentionally retain stable 68000 ABI names.
+native/motorola68000/amigaos/vm/tkvm/control.asm | 68000 | TKVM control API intentionally retains stable 68000 ABI helper names for host-native callers.
+native/motorola68000/amigaos/vm/tkvm/runtime.asm | 68000 | TKVM runtime entrypoint intentionally retains the stable 68000 ABI name for host-native callers.
+native/motorola68000/amigaos/debug/README.md | 68000,68020,ccr | Native debug-module README documents the host architecture and user-visible flag-preservation ABI without adding generic CPU semantics.
 
 # Host-native smoke harnesses may name the exercised expression form directly.
-native/motorola68000/amigaos/test-harnesses/prvm/prvm_smoke.asm | immediate,dec | PRVM smoke harness intentionally names the immediate-decimal expression case it validates.
+native/motorola68000/amigaos/tests/prvm/prvm_smoke.asm | immediate,dec | PRVM smoke harness intentionally names the immediate-decimal expression case it validates.

@@ -38,18 +38,9 @@ repo_root="$(cd "${script_dir}/../.." && pwd)"
 cd "${repo_root}"
 
 tests=(
-  external_fs_uae_opforge_native_cli_schema_binary_parity_matches_live_rust_cli
-  external_fs_uae_opforge_native_cli_schema_listing_parity_matches_live_rust_cli
-  external_fs_uae_opforge_native_cli_schema_diagnostic_parity_matches_live_rust_cli
-  external_fs_uae_opforge_native_cli_expression_metadata_fallback_matches_live_rust_cli
-  external_fs_uae_opforge_native_cli_source_cpu_normalization_matches_live_rust_cli
-  external_fs_uae_opforge_native_cli_debug_output_isolation_preserves_normal_output
-  native_mos_forward_ref_stability_fs_uae
-  native_reference_opcore_syntax_expression_fs_uae
-  native_reference_opcore_module_macro_statement_fs_uae
-  native_reference_opcore_layout_output_fs_uae
-  native_reference_opcore_diagnostic_fs_uae
-  external_fs_uae_native_motorola68000_complete_reference_parity
+  compact_opcore_corpus_fs_uae
+  compact_mos_corpus_fs_uae
+  compact_motorola68000_corpus_fs_uae
 )
 
 test_source="crates/opforge-asm/src"
@@ -69,7 +60,7 @@ for test_name in "${tests[@]}"; do
   output_file="${output_dir}/${test_name}.log"
   printf '==> Active native reference Level D parity: %s\n' "${test_name}"
   cargo_status=0
-  "${cargo_bin}" test -p asm "${test_name}" -- --nocapture --test-threads=1 >"${output_file}" 2>&1 || cargo_status=$?
+  "${cargo_bin}" test -p asm "${test_name}" -- --ignored --nocapture --test-threads=1 >"${output_file}" 2>&1 || cargo_status=$?
   cat "${output_file}"
   if [[ ${cargo_status} -ne 0 ]] \
     || rg -q 'SKIP:' "${output_file}" \

@@ -1,9 +1,5 @@
 //! Shared directive ownership: live Rust oracles and bounded real-native cases.
 use super::*;
-use crate::fs_uae_smoke::{
-    FsUaeSmokeOutcome, OpforgeNativeCliPackageMode, OpforgeNativeCliParityCase,
-    OpforgeNativeCliProof,
-};
 
 fn data_source(cpu: &str) -> String {
     let mut source = format!(".cpu {cpu}\n.org 0\nBASE .const $20\n");
@@ -77,149 +73,31 @@ fn native_shared_directive_rust_oracles() {
 
 #[test]
 fn native_shared_directive_boundary_contract() {
-    // Level B source contract only: retained parser kind controls both passes;
-    // directive extension omits shape inference but retains scoped snapshots.
-    let root = workspace_root();
-    let driver = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/opasm/opasm_assembly_driver.asm"),
-    )
-    .unwrap();
-    for name in ["emitPackageStateReady", "advancePackageStateReady"] {
-        let route = &driver[driver.find(&format!("{name}\n")).unwrap()..];
-        assert!(source_contains_in_order(
-            route,
-            &[
-                "bsr.w classifyStatementDirectiveV1",
-                "cmpi.w #-1, d3",
-                "beq.w unknownDirective",
-            ]
-        ));
-    }
-    let helper = driver
-        .split("statementIsDirectiveV1\t.block")
-        .nth(1)
-        .unwrap()
-        .split("\t.bend")
-        .next()
-        .unwrap();
-    assert!(helper.contains("eng.opasmEngineGetStatementKindV1"));
-    assert!(!helper.contains("GetStatementSourceText"));
-    let session = fs::read_to_string(
-        root.join("native/motorola68000/amigaos/opforge-cli/assembly_session.asm"),
-    )
-    .unwrap();
-    let fallback = session
-        .split("opforgeNativeCliRecordSourceStatementMnemonic\t.block")
-        .nth(1)
-        .unwrap()
-        .split("\t.bend")
-        .next()
-        .unwrap();
+    let root = workspace_root().join("native/motorola68000/amigaos");
+    let prepare = fs::read_to_string(root.join("assembler/prepare/prepare.asm")).unwrap();
     assert!(source_contains_in_order(
-        fallback,
+        &prepare,
         &[
-            "cmpi.b #'.', (a2)",
-            "bne.s copyMnemonic",
-            "move.w #constants.NCLI_PARSER_DIRECTIVE_GENERIC, state.NativeCliStmtDirectiveKind",
-            "addq.l #1, state.NativeCliStmtMnemStart",
+            "statement",
+            "cmpi.b #7, (a0)",
+            "beq.w directive",
+            "bsr.w name",
+            "bra.w operands",
+            "directive",
         ]
     ));
-    let evaluation =
-        fs::read_to_string(root.join("native/motorola68000/amigaos/opasm/opasm_operand_eval.asm"))
-            .unwrap();
-    assert!(source_contains_in_order(
-        &evaluation,
-        &[
-            "prepareExtensionCommon\t.block",
-            "eng.opasmEngineGetStatementKindV1",
-            "beq.s instructionExtension",
-            "eng.prepareDirectiveEvaluateExpressionExtensionV1",
-            "bra.s extensionReady",
-            "instructionExtension",
-            "eng.prepareEvaluateExpressionExtensionV1",
-            "extensionReady",
-            "bsr.w materializeScopedSnapshot",
-        ]
-    ));
-}
-
-fn run_native_case(cpu: &str, negative: bool) {
-    let source = if negative {
-        format!(".cpu {cpu}\nlabel .nop\n")
-    } else {
-        data_source(cpu)
-    };
-    run_native_source(source, negative);
-}
-
-fn run_native_source(source: String, negative: bool) {
-    // Level D only when Completed: fresh guest protocol and live Rust bytes.
-    let root = workspace_root();
-    let package =
-        fs::read(root.join("native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"))
-            .unwrap();
-    let oracle = if negative {
-        Vec::new()
-    } else {
-        rust_bytes(&source)
-    };
-    let case = OpforgeNativeCliParityCase {
-        name: if negative {
-            "unknown-dot"
-        } else {
-            "shared-data"
-        },
-        cpu_override: "68020",
-        extra_assembly_defines: &[],
-        source_override: Some(source.as_bytes()),
-        command_template: Some("{input} --bin {bin} --cpu m6502 --opasm-package {package}"),
-        package_mode: OpforgeNativeCliPackageMode::Explicit(&package),
-        extra_guest_files: &[],
-        proof: if negative {
-            OpforgeNativeCliProof::ExpectedFailureContaining("Unknown directive")
-        } else {
-            OpforgeNativeCliProof::ExactArtifact {
-                relative_path: "Work/opforge_native_out.bin",
-                rust_oracle: &oracle,
-            }
-        },
-    };
-    match crate::fs_uae_smoke::run_opforge_native_cli_parity_cases_from_env(&root, &[case])
-        .expect("shared directive native proof")
-    {
-        FsUaeSmokeOutcome::Skipped(reason) => eprintln!("SKIP (no native proof): {reason}"),
-        FsUaeSmokeOutcome::Completed { runs } => {
-            assert_eq!(runs.len(), 1);
-            let run = &runs[0];
-            assert!(run.protocol_completed);
-            if negative {
-                assert!(run.exit_code.is_some_and(|code| code != 0));
-            } else {
-                assert!(run.success);
-                assert_eq!(run.exit_code, Some(0));
-            }
-        }
+    for role in ["ByteDirective", "WordDirective", "LongDirective"] {
+        assert!(prepare.contains(&format!(
+            "cmp.w package.Header.{role}(a2), d7\n\tbeq.w dataScalar"
+        )));
     }
-}
-
-#[test]
-fn native_shared_directive_m6502_data_fs_uae() {
-    run_native_case("m6502", false);
-}
-#[test]
-fn native_shared_directive_m6502_unknown_fs_uae() {
-    run_native_case("m6502", true);
-}
-#[test]
-fn native_shared_directive_m68020_data_fs_uae() {
-    run_native_case("m68020", false);
-}
-#[test]
-fn native_shared_directive_m68020_unknown_fs_uae() {
-    run_native_case("m68020", true);
-}
-
-#[test]
-fn native_shared_directive_cpu_switch_fs_uae() {
-    run_native_source(switched_data_source(), false);
+    let scalar = prepare
+        .split_once("\nscalar\n")
+        .unwrap()
+        .1
+        .split_once("\noneScalar\n")
+        .unwrap()
+        .0;
+    assert!(scalar.contains("bsr.w compile"));
+    assert!(!scalar.contains("operands"));
 }

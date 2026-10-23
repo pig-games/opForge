@@ -12,8 +12,9 @@ class NativeMacroCompletionTests(unittest.TestCase):
         cls.root = Path(__file__).resolve().parents[3]
         cls.wrapper = cls.root / "scripts/workflow/run_native_macro_completion.sh"
         cls.tests = (
-            "native_macro_invocation_fixture_fs_uae",
-            "native_macro_preprocessor_harness_fs_uae_proves_capture_lookup_and_nested_frame_rejection",
+            "compact_opcore_corpus_fs_uae",
+            "compact_mos_corpus_fs_uae",
+            "compact_motorola68000_corpus_fs_uae",
         )
 
     def test_missing_configuration_fails_closed(self):

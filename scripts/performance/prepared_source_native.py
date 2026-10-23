@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 
-import runtime_comparison as runtime
+import native_case_runner as runtime
 import vm_efficiency as base
 
 BINARY_TEST = "tests::binary_source_experiment::binary_source_fs_uae"
@@ -239,7 +239,6 @@ def main():
     parser.add_argument("--native-test", type=Path, required=True)
     parser.add_argument("--native-source-root", type=Path, default=base.ROOT,
                         help="native source snapshot used by both live runners (default: repository root)")
-    parser.add_argument("--package", type=Path, default=base.ROOT / "native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm")
     parser.add_argument("--workload", choices=("mixed", "replay-smoke", "binding-switch",
                                                 "expression-replay", "expression-layout", "macro-repeat"), default="mixed",
                         help="mixed measures selection; expression workloads exercise bounded label/current-PC arithmetic")
@@ -282,9 +281,11 @@ def main():
     if args.binary_only and args.compact_cli:
         parser.error("--binary-only cannot be combined with --compact-cli")
 
+    if not (args.binary_only or args.compact_only):
+        parser.error("the retired text runner is unavailable; use --binary-source --binary-only or --compact-cli --compact-only")
+
     native_test = args.native_test.resolve(strict=True)
     native_source_root = args.native_source_root.resolve(strict=True)
-    package = args.package.resolve(strict=True)
     template = Path(os.environ["OPFORGE_FS_UAE_CONFIG_TEMPLATE"]).resolve(strict=True)
     os.environ[MEMORY_PROFILE_ENV] = args.memory_profile
     template_text = template.read_text()
@@ -304,7 +305,7 @@ def main():
         "compact_only": args.compact_only,
         "compare_memory": args.compare_memory,
         "workload": args.workload,
-        "package": {"path": str(package), "bytes": package.stat().st_size, "sha256": base.digest(package.read_bytes())},
+        "package_preparation": "current Rust registry, independently owned by each native case",
         "native_test": {"path": str(native_test), "bytes": native_test.stat().st_size, "sha256": base.digest(native_test.read_bytes())},
         "native_source_root": str(native_source_root),
         "native_source_sha256": runtime.native_source_digest(native_source_root),
@@ -357,22 +358,10 @@ def main():
                 "output_sha256": base.digest(expected),
             }
             report["cases"].append(row)
-            if not (args.binary_only or args.compact_only):
-                try:
-                    receipt = runtime.native(native_test, source_path, package, budget, case_dir / "native.log", args.profile,
-                                             native_source_root)
-                    if bytes(receipt["exact_output"]) != expected:
-                        raise ValueError(f"{cpu} live native/Rust output differs from independent workload bytes")
-                    receipt.pop("exact_output")
-                    row["native"] = receipt
-                except Exception as error:
-                    # A failed case is evidence only for itself; attempt later cases
-                    # under the same batch deadline and keep the batch fail-closed.
-                    row["error"] = str(error)
             if args.binary_source:
                 try:
                     receipt = runtime.native(
-                        native_test, source_path, package, budget,
+                        native_test, source_path, budget,
                         case_dir / "binary-source.log", "off",
                         native_source_root,
                         test=BINARY_TEST,
@@ -395,7 +384,7 @@ def main():
             if args.compact_cli:
                 try:
                     receipt = runtime.native(
-                        native_test, source_path, package, budget,
+                        native_test, source_path, budget,
                         case_dir / "compact-cli.log", "off", native_source_root,
                         test=COMPACT_MACRO_TEST,
                         result_prefix="COMPACT_MACRO_COMPARISON ",

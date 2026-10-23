@@ -1,8 +1,7 @@
 //! Current native modules exercised through the ordinary private CLI pipeline.
 use super::{private_oracle, private_pipeline_native_cases, PrivateCase, PRIVATE_OUTPUTS};
 
-const MEMORY: &str =
-    include_str!("../../../../native/motorola68000/amigaos/experimental/binary_memory.asm");
+const MEMORY: &str = include_str!("../../../../native/motorola68000/amigaos/platform/memory.asm");
 const INCLUDES: [(&str, &str); 7] = [
     (
         "library/memory_telemetry.i",
@@ -39,7 +38,7 @@ fn memory_case() -> PrivateCase {
         (
             "entry.asm",
             format!(
-                ".module main\n.cpu 68020\n.use experimental.amigaos.binary_memory as memory\n.section code,kind=code\n.long memory.reserve,memory.release\n.endsection\n.section data,kind=data\n.word memory.Block.Used\n.endsection\n{PRIVATE_OUTPUTS}"
+                ".module main\n.cpu 68020\n.use opforge.platform.memory as memory\n.section code,kind=code\n.long memory.reserve,memory.release\n.endsection\n.section data,kind=data\n.word memory.Block.Used\n.endsection\n{PRIVATE_OUTPUTS}"
             ),
         ),
         ("library/binary_memory.asm", MEMORY.into()),
@@ -53,7 +52,7 @@ fn memory_case() -> PrivateCase {
 }
 
 const BINDING_LAYOUT: &str =
-    include_str!("../../../../native/motorola68000/amigaos/experimental/binary_binding_layout.asm");
+    include_str!("../../../../native/motorola68000/amigaos/assembler/symbols/binding_layout.asm");
 
 // Byte-exact current ABI source: its CPU declaration does not create code/data.
 fn layout_case() -> PrivateCase {
@@ -62,7 +61,7 @@ fn layout_case() -> PrivateCase {
         accepted_modules: 2,
         files: vec![
             ("entry.asm", format!(".module main\n.cpu 68020\n.use worker\n.section code,kind=code\n.long worker.entry\n.endsection\n.section data,kind=data\n.word worker.VALUE\n.endsection\n{PRIVATE_OUTPUTS}")),
-            ("library/worker.asm", ".module worker\n.cpu 68020\n.use experimental.amigaos.binary_binding_layout as layout\n.pub\nVALUE .const layout.Plan.Bytes\n.section code,kind=code\nentry .block\n.word layout.Plan.Bytes,layout.Candidate.MemberCount\n rts\n.bend\n.endsection\n.endmodule\n".into()),
+            ("library/worker.asm", ".module worker\n.cpu 68020\n.use opforge.assembler.symbols.binding_layout as layout\n.pub\nVALUE .const layout.Plan.Bytes\n.section code,kind=code\nentry .block\n.word layout.Plan.Bytes,layout.Candidate.MemberCount\n rts\n.bend\n.endsection\n.endmodule\n".into()),
             ("library/binary_binding_layout.asm", BINDING_LAYOUT.into()),
         ],
     }

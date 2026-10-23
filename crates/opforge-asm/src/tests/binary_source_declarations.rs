@@ -257,7 +257,7 @@ fn native_project_cases(cases: Vec<NativeCase>, report_env: &str) {
     let build = build_native_packages(
         &engine::build_default_asm_registry(),
         &dir.join("build"),
-        &native_root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &native_root.join("native/motorola68000/amigaos/main.asm"),
         &EmbedSelection::Targets(vec!["m68020".into()]),
     )
     .unwrap();
@@ -949,7 +949,7 @@ fn compact_conditional_policy_matches_live_tkvm_punctuation() {
             vm::portable_contract::PortableOperatorKind::Eq
         )
     ));
-    let native = include_str!("../../../../native/motorola68000/amigaos/tkvm/tkvm_runtime.asm");
+    let native = include_str!("../../../../native/motorola68000/amigaos/vm/tkvm/runtime.asm");
     punctuation.push(
         native
             .lines()

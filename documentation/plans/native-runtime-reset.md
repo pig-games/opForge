@@ -1,31 +1,58 @@
 # Native assembler completion plan
 
-## Assignment and completion order
+## Current product state
 
-Complete current Rust assembler language, packages and assembly CLI/output
-behavior through the compact native path in this order:
+The maintained native AmigaOS assembler now starts at
+[`main.asm`](../../native/motorola68000/amigaos/main.asm), defaults to `.cpu 68020`,
+includes the checked-in external-only package catalog and emits `build/opforge`.
+The package builder can embed the selected m68020 payload and emits external
+target packages alongside the executable bundle. This
+promotion changes the product entry point; it does not claim complete Rust
+language, CPU-family or output parity. Full opcore and family parity, plus the
+2 MiB memory target, remain open.
 
-Current direction (2026-10-13): pause parity implementation for a measurement-led
-performance pass. Establish current full-workload runtime and memory costs,
-analyse ownership and repeated work, then rank optimization candidates before
-implementing them. See [performance diagnosis](native-performance-diagnosis.md).
-This request supersedes the earlier optimization deferral.
+**Promoted-source self-host qualified, 2026-10-23.** The release bundle contains
+278 mapped inputs (3,423,951 bytes), source manifest
+`fnv1a64:1e8651abd5b52cb3`. Its complete 826,708-byte executable and live Rust
+oracle have digest `fnv1a64:900a3da58deb315a`; linked static reservation is
+868,436 bytes, including the embedded m68020 package. No bootstrap instrumentation
+is enabled.
 
-1. Shared opcore.
-2. 6502 family.
-3. Complete 68000 family, including FPU, MMU, AMMX and 68080/Apollo.
-4. i8080.
-5. RISC-V.
-6. 6809.
+The full cold and unchanged incremental builds complete under 8 MiB total RAM
+(68020, 2 MiB chip + 6 MiB fast), installed Workbench 47.2, plain background,
+64 KiB stack and disk capture. Cold takes **281 s (4m 41s)** and rebuilds all 190
+modules; warm takes **59 s** and reuses all 190 with zero rebuilds. CLI totals
+are 280.92 s and 59.34 s. Each phase exits zero and produces the entire Hunk
+exactly matching live Rust and the bootstrap. The harness deletes the prior output
+before each phase and requires fresh protocol markers and phase return codes.
+CPU speed is unrestricted; these are FS-UAE durations, not physical 68020 timings.
+An earlier repeat alongside host tests took 345/87 s and is not used to assess
+promotion cost. These different source snapshots do not establish an isolated
+performance gain over the earlier 288/60 s checkpoint.
 
-Repair discovered Rust defects before qualifying corresponding native behavior.
-Keep CPU/family/dialect semantics in package owners and generic directives in
-shared processing. Developer tools remain separate. Continue autonomously through
-coherent recovery points; consult Erik for dramatic performance or memory
-regressions. Resume this completion sequence after the current performance
-diagnosis and its agreed optimization work.
+This proves completion in that 8 MiB Workbench setup. Peak heap was not remeasured;
+it does not establish 2 MiB fit or a fresh per-process memory accounting result.
+A6000 validation of this promoted bundle remains pending. The native frontend
+implementation is deliberately retained; its internal refactoring is separate.
 
-## Current evidence and limits
+The maintained ASM unit checks pass with the known pre-existing
+`examples_match_reference_outputs` failure excluded: implicit module wrappers
+appear in listings while the checked MOS listing still omits them. The failure
+also reproduces alone with unchanged production Rust, example input and helper
+behavior. Goldens were not refreshed to mask it. The redundant-test checker still
+reports 14 pre-existing autofixable sites (all unchanged from before promotion;
+the old tree had 18). Neither limitation is a successful full Rust quality-gate
+claim. Focused entry-order, native CLI, formatting, workflow and Clippy checks
+qualify their stated scopes.
+
+Continue parity work with shared opcore, then CPU families (6502, 68000, i8080,
+RISC-V and 6809), repairing Rust defects before qualifying corresponding native
+behavior. Keep CPU/family/dialect semantics in package owners and generic
+directives in shared processing. See the
+[performance diagnosis](native-performance-diagnosis.md) for retained measured
+results and the limits of those comparisons.
+
+## Earlier qualification and limits
 
 The 2026-10-12 frozen-image correctness-only opcore audit completed all 86
 unchanged roots under the fresh-run protocol: 32 positive roots match every
@@ -288,7 +315,7 @@ core reference behavior.
 First qualify the compiler/matcher components and package boundary. Then connect
 numeric statement storage to the existing template cursor and substitution owner,
 rather than adding another expansion engine. Component completion alone does not
-add `.statement` support to the compact CLI. The new BS38 preparation programs
+add `.statement` support to the native CLI. The new BS38 preparation programs
 have no native VM-version fields or dispatch; this does not complete the pending
 consolidation of older VM contracts.
 
@@ -350,7 +377,7 @@ assembler tests, 962 affected subsystem tests and Clippy pass. Source acquisitio
 and numeric selection have separate owners. Export/scope rows are still rebuilt
 per Rust invocation; no optimization or broad statement parity is claimed.
 
-The compact CLI now connects direct source statement declarations and invocations
+The native CLI now connects direct source statement declarations and invocations
 to the shared services and existing packed template cursor. Ten fresh native
 cases match live Rust output exactly, with zero guest exit and completed protocol:
 byte/word overload selection, caller labels, empty and duplicate captures, named
@@ -875,8 +902,7 @@ expressions, data/layout, modules/parameters, CLI/output, diagnostics and VM
 contract gaps are qualified against current Rust behavior. Rerun complete
 unchanged corpus roots and fresh full current-source self-host at that boundary,
 and review combined responsibility boundaries. Then qualify each CPU family in
-the stated order, including registered pipelines and current examples. Promotion
-from experimental needs the full language/target/CLI matrix, representative
+the stated order, including registered pipelines and current examples. Complete native parity qualification needs the full language/target/CLI matrix, representative
 multi-module projects, useful diagnostics and honest resource requirements.
 Qualify the 68020/AmigaOS floor and 2 MiB product goal separately from the 74 MiB
 emulator result. Commit coherent recovery points; pushes require explicit authorization.
@@ -885,8 +911,8 @@ emulator result. Commit coherent recovery points; pushes require explicit author
 
 - [Compact frontend boundary](compact-frontend-vm-boundary.md): implemented subsets,
   explicit limits and identified self-host proof.
-- [Native source execution](native-source-execution.md): pending source-session design.
-- [Native VM consolidation](native-vm-consolidation.md): pending contract migration.
+- [Native source execution](native-source-execution.md): source-session responsibilities and remaining work.
+- [Native VM consolidation](native-vm-consolidation.md): contract migration and limits.
 - [Package execution boundaries](package-execution-boundaries.md): shared directive
   and package responsibility boundaries.
 - [Native guide](../../native/README.md) and [reference manual](../opForge-reference-manual.md):

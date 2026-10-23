@@ -352,9 +352,9 @@ class HardwareCompletionTests(unittest.TestCase):
                 source = ("Record .struct\n" + "".join(
                     f"Field{i} .long ?\n" for i in range(header_longs)) +
                     "Tokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens\n").encode()
-                logical = "experimental/binary_capture.asm"
+                logical = "assembler/source/capture.asm"
                 for base in (root / "original", root / "src"):
-                    (base / "experimental").mkdir()
+                    (base / "assembler/source").mkdir(parents=True)
                     (base / logical).write_bytes(source)
                 manifest = json.loads((root / "manifest.json").read_text())
                 manifest["source_mapping"].append({
@@ -621,13 +621,13 @@ class HardwareCompletionTests(unittest.TestCase):
         manifest = json.loads((root / "manifest.json").read_text())
         package_file = manifest["runtime_package_file"]
         package = (root / package_file).read_bytes()
-        original = b'.include "package_catalog.i"\n.entry native\n'
+        original = b'.include "packages/catalog.i"\n.entry native\n'
         (root / "original/experimental").mkdir()
-        (root / "original/experimental/opforge_compact_cli.asm").write_bytes(original)
+        (root / "original/main.asm").write_bytes(original)
         sources = [
-            ("experimental/opforge_compact_cli.asm", "configured_entry", original.replace(b"package_catalog.i", b"catalog.i")),
-            ("experimental/catalog.i", "generated_catalog", f'.incbin "packages/{package_file}"\n'.encode()),
-            (f"experimental/packages/{package_file}", "package_asset", package),
+            ("main.asm", "configured_entry", original.replace(b"packages/catalog.i", b"catalog.i")),
+            ("catalog.i", "generated_catalog", f'.incbin "packages/{package_file}"\n'.encode()),
+            (f"packages/{package_file}", "package_asset", package),
         ]
         identity = bytearray(b"entry.asm\0source\0")
         for logical, origin, data in sources:
@@ -647,10 +647,10 @@ class HardwareCompletionTests(unittest.TestCase):
     def source_directed_embedded_output_bundle(self, root):
         self.embedded_output_bundle(root)
         manifest = json.loads((root / "manifest.json").read_text())
-        logical = "experimental/opforge_compact_cli.asm"
+        logical = "main.asm"
         original = (b".module main\n.cpu 68020\n"
-                    b'.include "package_catalog.i"\n.entry native\n')
-        staged = original.replace(b"package_catalog.i", b"catalog.i")
+                    b'.include "packages/catalog.i"\n.entry native\n')
+        staged = original.replace(b"packages/catalog.i", b"catalog.i")
         (root / "original" / logical).write_bytes(original)
         (root / "src" / logical).write_bytes(staged)
         row = next(row for row in manifest["source_mapping"]
@@ -658,9 +658,9 @@ class HardwareCompletionTests(unittest.TestCase):
         row.update({"bytes": len(staged), "digest": runner.fnv(staged)})
         manifest.update({
             "entry": "src/" + logical,
-            "native_output_file": "build/opforge_compact",
+            "native_output_file": "build/opforge",
             "capture_mode": "disk",
-            "command": ("opforge -i src/experimental/opforge_compact_cli.asm "
+            "command": ("opforge -i src/main.asm "
                         "-M src -I src/debug --capture-dir scratch"),
         })
         manifest["source_manifest_digest"] = runner.fnv(b"".join(
@@ -676,7 +676,7 @@ class HardwareCompletionTests(unittest.TestCase):
             self.embedded_output_bundle(root)
             manifest, files, oracle, case = runner.load_bundle(root)
             self.assertEqual(files["opforge"], oracle)
-            asset = "src/experimental/packages/" + manifest["runtime_package_file"]
+            asset = "src/packages/" + manifest["runtime_package_file"]
             self.assertEqual(files[asset], (root / manifest["runtime_package_file"]).read_bytes())
             self.assertNotIn("p.bin", files)
             transfer = root / "transfer"
@@ -705,10 +705,10 @@ class HardwareCompletionTests(unittest.TestCase):
             root = Path(directory)
             self.source_directed_embedded_output_bundle(root)
             manifest, _, _, case_digest = runner.load_bundle(root)
-            self.assertEqual(manifest["native_output_file"], "build/opforge_compact")
+            self.assertEqual(manifest["native_output_file"], "build/opforge")
             self.assertEqual(
                 manifest["command"],
-                "opforge -i src/experimental/opforge_compact_cli.asm "
+                "opforge -i src/main.asm "
                 "-M src -I src/debug --capture-dir scratch",
             )
             self.assertEqual(case_digest, runner.load_bundle(root)[3])
@@ -725,9 +725,9 @@ class HardwareCompletionTests(unittest.TestCase):
 
     def test_source_directed_output_rejects_mismatch_and_unsafe_paths(self):
         for output_file, command_change, error in (
-            ("../build/opforge_compact", None, "Unsupported native output file"),
+            ("../build/opforge", None, "Unsupported native output file"),
             ("output.hunk", None, "Source-directed output requires"),
-            ("build/opforge_compact", " --hunk output.hunk", "Embedded test cannot override"),
+            ("build/opforge", " --hunk output.hunk", "Embedded test cannot override"),
         ):
             with self.subTest(output_file=output_file, command_change=command_change), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -922,12 +922,12 @@ class HardwareCompletionTests(unittest.TestCase):
     def test_preexisting_source_directed_output_stops_before_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            runner.verify_fresh_directory(root, "build/opforge_compact")
-            old_output = root / "build/opforge_compact"
+            runner.verify_fresh_directory(root, "build/opforge")
+            old_output = root / "build/opforge"
             old_output.parent.mkdir()
             old_output.write_bytes(b"stale")
-            with self.assertRaisesRegex(ValueError, "old result: build/opforge_compact"):
-                runner.verify_fresh_directory(root, "build/opforge_compact")
+            with self.assertRaisesRegex(ValueError, "old result: build/opforge"):
+                runner.verify_fresh_directory(root, "build/opforge")
 
     def test_telemetry_required_but_cannot_replace_successful_assembly(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -971,7 +971,7 @@ class HardwareCompletionTests(unittest.TestCase):
             capture_source = ("Record .struct\n" + "\n".join(record_fields) +
                               "\nLine .word ?\nCount .byte ?\nRootFile .byte ?\n"
                               "Tokens .byte ?\n.endstruct\nHEADER_BYTES = Record.Tokens\n")
-            files = {"src/experimental/binary_capture.asm": capture_source.encode()}
+            files = {"src/assembler/source/capture.asm": capture_source.encode()}
             result = {"success": True}
             runner.add_telemetry(result, root, manifest, files)
             self.assertFalse(result["success"])
@@ -1065,18 +1065,18 @@ class HardwareCompletionTests(unittest.TestCase):
                 "end.time": b"10:00:01",
             }.items():
                 (root / name).write_bytes(data)
-            output = root / "build/opforge_compact"
+            output = root / "build/opforge"
             output.parent.mkdir()
             output.write_bytes(b"oracle")
             result = runner.inspect_result(
                 root, {"input": b"source"}, b"oracle", "fresh", 1.1,
-                native_output_file="build/opforge_compact")
+                native_output_file="build/opforge")
             self.assertTrue(result["success"])
-            self.assertEqual(result["output_file"], "build/opforge_compact")
+            self.assertEqual(result["output_file"], "build/opforge")
             output.write_bytes(b"different")
             self.assertFalse(runner.inspect_result(
                 root, {"input": b"source"}, b"oracle", "fresh", 1.1,
-                native_output_file="build/opforge_compact")["success"])
+                native_output_file="build/opforge")["success"])
             with self.assertRaisesRegex(ValueError, "Unsupported native output file"):
                 runner.inspect_result(root, {"input": b"source"}, b"oracle", "fresh", 1.1,
                                       native_output_file="../output.hunk")

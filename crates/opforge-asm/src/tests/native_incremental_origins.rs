@@ -66,7 +66,7 @@ fn native_incremental_template_origin_ids() {
             },
         ])
         .collect();
-    let command = "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\nC:Copy Work:changed.txt Work:entry.asm\nEcho $RC >Work:change.rc\nWork:build/opforge_compact Work:entry.asm -M Work:library --incremental-dir Work:cache";
+    let command = "Work:entry.asm -M Work:library --incremental-dir Work:cache --rebuild >Work:cold.txt\nEcho $RC >Work:cold.rc\nC:Copy Work:build/module.bin Work:cold.bin\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache >Work:warm.txt\nEcho $RC >Work:warm.rc\nC:Copy Work:build/module.bin Work:warm.bin\nC:Copy Work:changed.txt Work:entry.asm\nEcho $RC >Work:change.rc\nWork:build/opforge Work:entry.asm -M Work:library --incremental-dir Work:cache";
     let artifacts = [
         OpforgeNativeCliExpectedArtifact {
             relative_path: "Work/cold.bin",

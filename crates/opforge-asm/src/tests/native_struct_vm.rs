@@ -11,8 +11,7 @@ use types::asm_value::ScalarProvenance;
 
 const SYMBOLS: [&str; 7] = ["Point", "x", "y", "missing", "Alias", "Scalar", "Undefined"];
 const ROW_BYTES: usize = 48;
-const HARNESS: &str =
-    "native/motorola68000/amigaos/test-harnesses/experimental/binary_struct_vm_harness.asm";
+const HARNESS: &str = "native/motorola68000/amigaos/tests/assembler/struct_vm_harness.asm";
 
 struct Context;
 impl PortableExprEvalContext for Context {
@@ -292,6 +291,10 @@ fn assemble(root: &Path, cases: &[Case]) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

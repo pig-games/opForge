@@ -6,7 +6,7 @@
 .ifndef OPFORGE_MEMORY_TELEMETRY
 .include "memory_telemetry_noop.i"
 .else
-	.use debug.amigaos.memory_profile as memory_profile
+	.use opforge.debug.memory_profile as memory_profile
 MEMORY_ALLOC	.macro amount
 	move.w ccr, -(sp)
 	move.l d0, -(sp)

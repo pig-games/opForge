@@ -316,11 +316,11 @@ pub fn build_native_packages(
     let packages_dir = output_dir.join("packages");
     let manifest_path = output_dir.join("manifest.json");
     let catalog_path = output_dir.join("catalog.i");
-    let cli_source_path = output_dir.join("opforge_compact_cli.asm");
+    let cli_source_path = output_dir.join("main.asm");
     let template = fs::read_to_string(cli_template).map_err(|e| e.to_string())?;
-    let marker = ".include \"package_catalog.i\"";
+    let marker = ".include \"packages/catalog.i\"";
     if template.matches(marker).count() != 1 {
-        return Err("CLI template must contain exactly one package_catalog.i include".into());
+        return Err("CLI template must contain exactly one packages/catalog.i include".into());
     }
     // Generated sources and assets form one relocatable build directory.
     let source = template.replace(marker, ".include \"catalog.i\"");
@@ -434,7 +434,7 @@ mod tests {
         let text = render_default_catalog(&registry).unwrap();
         assert_eq!(
             text,
-            include_str!("../../../native/motorola68000/amigaos/experimental/package_catalog.i")
+            include_str!("../../../native/motorola68000/amigaos/packages/catalog.i")
         );
         assert!(!text.contains(".incbin"));
         assert!(text.contains("CatalogEntries-Catalog"));
@@ -444,9 +444,87 @@ mod tests {
     }
 
     #[test]
+    fn configured_product_starts_with_catalog_tail_call() {
+        use clap::Parser;
+        use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
+        let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+        let native = workspace.join("native/motorola68000/amigaos");
+        let scratch = std::env::temp_dir().join(format!(
+            "opforge-product-entry-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir(&scratch).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(scratch.clone());
+        let build = build_native_packages(
+            &engine::build_default_asm_registry(),
+            &scratch.join("configured"),
+            &native.join("main.asm"),
+            &EmbedSelection::Targets(vec!["68020".into()]),
+        )
+        .unwrap();
+        let cli = Cli::parse_from([
+            "opforge".to_owned(),
+            build.cli_source_path.to_string_lossy().into_owned(),
+            "-M".into(),
+            native.to_string_lossy().into_owned(),
+            "-I".into(),
+            native.to_string_lossy().into_owned(),
+            "-I".into(),
+            native.join("debug").to_string_lossy().into_owned(),
+        ]);
+        let mut config = validate_cli(&cli).unwrap();
+        config.out_dir = Some(build.output_dir.clone());
+        run_with_validated_cli_with_context(&cli, &config)
+            .expect("assemble current product composition");
+        let image = fs::read(build.output_dir.join("build/opforge")).unwrap();
+        let segments = crate::fs_uae_smoke::hunk::segments(&image).unwrap();
+        let entry = &segments[0];
+        assert_eq!(entry.kind, 0x3e9, "load entry must be HUNK_CODE");
+        assert_eq!(
+            entry.payload.len(),
+            12,
+            "root contains only the catalog tail call"
+        );
+        assert_eq!(
+            &entry.payload[..2],
+            &[0x41, 0xf9],
+            "LEA Catalog,A0 must execute first"
+        );
+        assert_eq!(
+            &entry.payload[6..8],
+            &[0x4e, 0xf9],
+            "JMP cli.start must follow the catalog pointer"
+        );
+        let mut offsets = entry
+            .relocations
+            .iter()
+            .map(|(offset, _)| *offset)
+            .collect::<Vec<_>>();
+        offsets.sort_unstable();
+        assert_eq!(
+            offsets,
+            vec![2, 8],
+            "both catalog and CLI addresses relocate"
+        );
+    }
+
+    #[test]
     fn shared_target_bootstrap_matches_checked_in_asset() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../native/motorola68000/amigaos/experimental/target_bootstrap.i");
+            .join("../../native/motorola68000/amigaos/cli/target_policy.i");
         assert_eq!(
             fs::read_to_string(path).unwrap(),
             render_target_bootstrap(engine::default_cpu().as_str()).unwrap()

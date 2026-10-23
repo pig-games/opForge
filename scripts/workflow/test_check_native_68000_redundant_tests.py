@@ -25,7 +25,7 @@ class Native68000RedundantTestsInventoryTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             audit_path = root / "native/motorola68000/test.asm"
-            retained_path = root / "native/motorola68000/amigaos/opforge-cli/run.asm"
+            retained_path = root / "native/motorola68000/amigaos/tests/prvm/prvm_smoke.asm"
 
             audit_path.parent.mkdir(parents=True, exist_ok=True)
             retained_path.parent.mkdir(parents=True, exist_ok=True)
@@ -66,10 +66,10 @@ class Native68000RedundantTestsInventoryTest(unittest.TestCase):
             retained_path.write_text(
                 "\n".join(
                     [
-                        "opforgeNativeCliRun\t.block",
-                        "    jsr dos.openInput",
+                        "start\t.block",
+                        "    jsr OPEN_LIBRARY(a6)",
                         "    tst.l d0",
-                        "    bne.s inputOpened",
+                        "    beq.w done",
                     ]
                 )
                 + "\n",

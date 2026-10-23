@@ -276,8 +276,8 @@ fn private_cases() -> Vec<PrivateCase> {
         PrivateCase {
             name: "private-real-text-names",
             files: vec![
-                ("entry.asm", ".module main\n.cpu 68020\n.use experimental.amigaos.binary_text_names as names\n.section code,kind=code\n.long names.normalize\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
-                ("library/binary_text_names.asm", fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../native/motorola68000/amigaos/experimental/binary_text_names.asm")).unwrap()),
+                ("entry.asm", ".module main\n.cpu 68020\n.use opforge.assembler.language.text_names as names\n.section code,kind=code\n.long names.normalize\n.endsection\n.region ram,0,$ffff\n.place code in ram\n.output \"build/module.bin\",format=bin,sections=code\n.output \"build/module.hunk\",format=hunk,sections=code\n.endmodule\n".into()),
+                ("library/text_names.asm", fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../native/motorola68000/amigaos/assembler/language/text_names.asm")).unwrap()),
             ],
             accepted_modules: 1,
         },

@@ -51,7 +51,10 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
     let (a, b) = packages();
     std::fs::write(scratch.0.join("package-a.bin"), a).unwrap();
     std::fs::write(scratch.0.join("package-b.bin"), b).unwrap();
-    let source = std::fs::read_to_string(root.join("native/motorola68000/amigaos/test-harnesses/experimental/binary_expression_session_harness.asm")).unwrap();
+    let source = std::fs::read_to_string(
+        root.join("native/motorola68000/amigaos/tests/assembler/expression_session_harness.asm"),
+    )
+    .unwrap();
     let entry = scratch.0.join("entry.asm");
     std::fs::write(&entry, &source).unwrap();
     let cli = Cli::parse_from([
@@ -61,6 +64,10 @@ fn assemble(root: &Path) -> (Scratch, Vec<u8>, String) {
         "68020".into(),
         "-M".into(),
         root.join("native/motorola68000")
+            .to_string_lossy()
+            .into_owned(),
+        "-I".into(),
+        root.join("native/motorola68000/amigaos")
             .to_string_lossy()
             .into_owned(),
         "-I".into(),

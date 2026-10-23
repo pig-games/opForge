@@ -243,16 +243,6 @@ fn prepared_source_experiment_benchmark() {
         !std::hint::black_box(vm::prepared_encoding::TELEMETRY_ENABLED),
         "measure counters in a separate run"
     );
-    let package = vm::builder::build_hierarchy_package_from_registry(&registry()).unwrap();
-    let native_package = std::fs::read(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../native/motorola68000/amigaos/opforge-cli/opforge_cli_package.opasm"
-    ))
-    .unwrap();
-    assert_eq!(
-        package, native_package,
-        "host/native package definitions must match"
-    );
     for blocks in [8usize, 32] {
         let source = benchmark_source(blocks);
         for cpu in ["m6502", "m68000"] {

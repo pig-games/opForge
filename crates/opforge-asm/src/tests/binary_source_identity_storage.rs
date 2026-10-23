@@ -83,7 +83,7 @@ fn native(imported: bool) {
             words[2]
         );
     }
-    let image = &run.captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &run.captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_IDENTITY_STORAGE imported={imported} source_bytes={} output_bytes={} seconds={:?} image_bytes={} linked_reserved_bytes={} package_bytes={}", files.iter().map(|(_, source)| source.len()).sum::<usize>(), expected.len(), run.start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total(), package.len());
 }
 

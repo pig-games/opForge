@@ -50,31 +50,23 @@ fn run(args: Args) -> Result<(), String> {
     let build = build_native_packages(
         &registry,
         &args.out_dir,
-        &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+        &root.join("native/motorola68000/amigaos/main.asm"),
         &selection,
     )?;
     if !args.catalog_only {
         let build_dir = build.output_dir.join("build");
         std::fs::create_dir(&build_dir).map_err(|e| e.to_string())?;
-        let executable = build_dir.join("opforge_compact");
+        let executable = build_dir.join("opforge");
         let mut cli_args = vec![
             "opForge".to_string(),
             build.cli_source_path.to_string_lossy().into_owned(),
         ];
-        // Module namespaces are rooted at each native architecture directory.
-        let mut roots: Vec<_> = std::fs::read_dir(root.join("native"))
-            .map_err(|e| e.to_string())?
-            .filter_map(|entry| entry.ok().map(|e| e.path()))
-            .filter(|path| path.is_dir())
-            .collect();
-        roots.sort();
-        for path in roots {
-            cli_args.extend(["--module-path".into(), path.to_string_lossy().into_owned()]);
-        }
-        for path in [
-            root.join("native/motorola68000/amigaos/experimental"),
-            root.join("native/motorola68000/amigaos/debug"),
-        ] {
+        let native = root.join("native/motorola68000/amigaos");
+        cli_args.extend([
+            "--module-path".into(),
+            native.to_string_lossy().into_owned(),
+        ]);
+        for path in [native.clone(), native.join("debug")] {
             cli_args.extend(["--include-path".into(), path.to_string_lossy().into_owned()]);
         }
         let cli = cli_core::Cli::try_parse_from(cli_args).map_err(|e| e.to_string())?;
@@ -101,7 +93,7 @@ fn run(args: Args) -> Result<(), String> {
         if !executable.is_file() {
             return Err(format!("assembly did not create {}", executable.display()));
         }
-        let distributed_executable = build.output_dir.join("opforge_compact");
+        let distributed_executable = build.output_dir.join("opforge");
         std::fs::copy(&executable, &distributed_executable).map_err(|e| e.to_string())?;
         println!("Executable: {}", distributed_executable.display());
     }

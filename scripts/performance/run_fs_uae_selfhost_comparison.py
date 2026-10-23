@@ -90,10 +90,12 @@ def prepare_cases(args):
         directory = args.output / f"{index + 1}-{role}"
         directory.mkdir()
         source_files = {name: data for name, data in files.items() if name.startswith("src/")}
-        if "src/experimental/opforge_compact_cli.asm" not in source_files:
+        if "src/main.asm" not in source_files:
             raise ValueError("Full workload requires the mapped compact CLI entry")
         spec = {"schema": 1, "case_sha256": digest, "metadata": metadata,
                 "bootstrap_defines": own_manifest.get("bootstrap_defines", []),
+                "capture_mode": own_manifest.get("capture_mode", "disk"),
+                "native_output_file": "build/opforge",
                 "record_header_bytes": own_manifest.get("_validated_capture_record_header_bytes"),
                 "telemetry_manifest": {key: own_manifest[key] for key in (
                     "bootstrap_defines", "bootstrap_package_storage", "embedded_packages",

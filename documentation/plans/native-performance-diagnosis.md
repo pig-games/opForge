@@ -1,6 +1,16 @@
 # Native runtime and memory status
 
-## Current result and decision
+The promoted 2026-10-23 release completes full cold/incremental self-hosts in
+**281/59 seconds** on the established 8 MiB installed-Workbench FS-UAE setup.
+Both complete 826,708-byte outputs exactly match live Rust; cold rebuilds 190
+modules and warm reuses all 190. No fresh peak-heap result or isolated promotion
+speedup is claimed. The [native assembler plan](native-runtime-reset.md#current-product-state)
+records source identity, configuration and qualification limits.
+
+The remaining measurements identify earlier source snapshots; their heap and
+runtime values do not transfer automatically to the promoted tree.
+
+## Earlier qualified result and decision
 
 Stored dependency interfaces and default-on incremental reuse now pass complete
 self-builds under **8 MiB total RAM**, with installed Workbench and startup

@@ -13,12 +13,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "scripts/workflow/native_parity_test_names.txt"
 MODULES = (
-    "native_harness_evidence",
     "native_reference_shards",
     "native_fs_uae_parity",
 )
-ADDITIONAL_FILTER_MODULES = ("native_mos_forward_ref_stability", "native_production_corpus")
-TEST_RE = re.compile(r"(?m)^#\[test\]\nfn ([A-Za-z_][A-Za-z0-9_]*)\(")
+ADDITIONAL_FILTER_MODULES = ("native_mos_forward_ref_stability", "compact_mos_corpus")
+TEST_RE = re.compile(r"(?m)^#\[test\]\n(?:#\[[^\n]*\]\n)*fn ([A-Za-z_][A-Za-z0-9_]*)\(")
 
 
 def read_ledger(path: Path) -> tuple[dict[str, list[str]], list[str]]:
@@ -45,7 +44,7 @@ def validate(root: Path = ROOT, ledger_path: Path | None = None) -> list[str]:
     ledger_path = ledger_path or root / LEDGER.relative_to(ROOT)
     expected, errors = read_ledger(ledger_path)
     if tuple(expected) != MODULES:
-        errors.append("ledger must list the three owning modules in canonical order")
+        errors.append("ledger must list the owning modules in canonical order")
     ledger_names = [name for module in MODULES for name in expected.get(module, [])]
     if len(ledger_names) != len(set(ledger_names)):
         errors.append("ledger test names must be unique")

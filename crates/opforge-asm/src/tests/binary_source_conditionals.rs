@@ -109,7 +109,7 @@ fn compact_conditional_family_fs_uae() {
         panic!("real FS-UAE execution required");
     };
     assert_eq!(runs.len(), 1);
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     eprintln!("COMPACT_CONDITIONAL_FAMILY seconds={:?} image_bytes={} linked_reserved_bytes={} package_bytes={}",
         runs[0].start_to_done_host_seconds, image.len(), hunk::allocation(image).unwrap().total(), package.len());
 }

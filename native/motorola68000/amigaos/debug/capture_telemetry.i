@@ -24,7 +24,7 @@ CAPTURE_RELEASE = 2
 .ifndef OPFORGE_CAPTURE_TELEMETRY
 .include "capture_telemetry_noop.i"
 .else
-	.use debug.amigaos.capture_profile as capture_profile
+	.use opforge.debug.capture_profile as capture_profile
 
 CAPTURE_CLEAR	.macro
 	move.w ccr, -(sp)

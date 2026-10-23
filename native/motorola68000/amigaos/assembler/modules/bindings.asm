@@ -1,0 +1,405 @@
+; Preparation-only module ownership and visibility for numeric source identities.
+; @opforge-owner: opforge.assembler.modules.bindings
+	.module opforge.assembler.modules.bindings
+	.cpu 68020
+	.use opforge.assembler.symbols.lexical_store as lexical
+	.include "telemetry_macros.i"
+	.use opforge.assembler.symbols.name_store as nameStore
+	.use opforge.assembler.symbols.binding_records as records
+	.use opforge.platform.memory as memory
+	.pub
+State	.struct
+Active	.word ?
+Explicit	.word ?
+Outside	.word ?
+Visibility	.word ?
+Base	.word ?
+Selection	.word ?
+FileDerived	.word ?
+.endstruct
+OWNERS = State.FileDerived+2
+OWNERS_POINTER = OWNERS+memory.Block.Pointer
+ORIGINS = OWNERS+memory.Block.Used+4
+ORIGINS_POINTER = ORIGINS+memory.Block.Pointer
+FLAGS = ORIGINS+memory.Block.Used+4
+FLAGS_POINTER = FLAGS+memory.Block.Pointer
+SCRATCH_BYTES = FLAGS+memory.Block.Used+4
+PUBLIC = 1
+USED = 2
+MIXED = 4
+MODULE_ID = 8
+SELECTED = 16
+KIND_MODULE = 3
+	.section code, kind=code
+
+; A0=state,D0=first source ID. Clear bounded metadata. D0/CCR=status;
+; other registers preserved. Zero module ID denotes the unscoped global unit.
+begin	.block
+	movem.l d1/a0, -(sp)
+	move.w #SCRATCH_BYTES/2-1, d1
+clear
+	clr.w (a0)+
+	dbra d1, clear
+	movem.l (sp)+, d1/a0
+	move.w d0, State.Base(a0)
+	moveq #0, d0
+	rts
+	.bend  ; begin
+
+; A0=module state,D0=minimum identity slots. D0/CCR=status; others kept.
+; Partial allocation growth remains owned on failure; Count is caller-owned.
+reserve	.block
+	cmpi.l #65535, d0
+	bhi.w bad
+	movem.l d1/a0-a1, -(sp)
+	movea.l a0, a1
+	move.l d0, d1
+	add.l d1, d1
+	lea OWNERS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent1
+	move.l d1, memory.Block.Used(a0)
+extent1
+	lea ORIGINS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent2
+	move.l d1, memory.Block.Used(a0)
+extent2
+	lea FLAGS(a1), a0
+	move.l d1, d0
+	jsr memory.reserve
+	bne.w done
+	cmp.l memory.Block.Used(a0), d1
+	bls.w extent3
+	move.l d1, memory.Block.Used(a0)
+extent3
+done
+	movem.l (sp)+, d1/a0-a1
+	tst.l d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; reserve
+
+; A0=module state. Release every owned identity block; registers kept.
+release	.block
+	move.l a0, -(sp)
+	lea OWNERS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea ORIGINS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp), a0
+	lea FLAGS(a0), a0
+	jsr memory.release
+	clr.l memory.Block.Used(a0)
+	movea.l (sp)+, a0
+	rts
+	.bend  ; release
+
+; A0=state. Ordinary content is allowed in global mode or an active module.
+; Remember pre-module content so a later explicit module cannot legalize it.
+; D0/CCR=status; other registers preserved.
+content	.block
+	tst.w State.Active(a0)
+	bne.w ok
+	tst.w State.Explicit(a0)
+	bne.w bad
+	move.w #1, State.Outside(a0)
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; content
+
+; D0=source index,A0=state. Capture declaration ownership and visibility without
+; disturbing accumulated reference origins or the independent module identity.
+; Preserves all registers; CCR unspecified.
+claim	.block
+	movem.l d0-d1/a0-a1, -(sp)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l OWNERS_POINTER(a0), a1
+	move.w State.Active(a0), 0(a1, d0.l)
+	movea.l FLAGS_POINTER(a0), a1
+	adda.l d0, a1
+	andi.w #$fffe, 0(a1)
+	suba.l d0, a1
+	move.w State.Visibility(a0), d1
+	adda.l d0, a1
+	or.w d1, 0(a1)
+	suba.l d0, a1
+	movem.l (sp)+, d0-d1/a0-a1
+	rts
+	.bend  ; claim
+
+; A0=module state,A1=lexical entry. Capture the template declaration facet
+; without changing numeric declaration ownership or reference origins.
+; All registers preserved; CCR unspecified.
+claimTemplate	.block
+	movem.l d0, -(sp)
+	move.w State.Active(a0), records.Entry.TemplateModule(a1)
+	andi.w #65535-records.TEMPLATE_PUBLIC, records.Entry.TemplateFlags(a1)
+	move.w State.Visibility(a0), d0
+	lsl.w #1, d0
+	or.w d0, records.Entry.TemplateFlags(a1)
+	movem.l (sp)+, d0
+	rts
+	.bend  ; claimTemplate
+
+; A0=module state,A1=canonical statement-key entry. Aggregate public existence
+; across overloads; each retained row separately owns its visibility. No allocation.
+; All registers preserved; CCR unspecified. Ordinary template facets are untouched.
+claimStatement	.block
+	move.l d0, -(sp)
+	move.w State.Active(a0), records.Entry.StatementModule(a1)
+	move.w State.Visibility(a0), d0
+	lsl.w #records.STATEMENT_PUBLIC_BIT, d0
+	or.w d0, records.Entry.TemplateFlags(a1)
+	move.l (sp)+, d0
+	rts
+	.bend  ; claimStatement
+
+; A0=module state,A1=template entry. Check the current invocation origin
+; against its independent declaration ownership and visibility.
+; D0/CCR=status; other registers preserved.
+checkTemplate	.block
+	moveq #0, d0
+	move.w records.Entry.TemplateModule(a1), d0
+	beq.w ok
+	cmp.w State.Active(a0), d0
+	beq.w ok
+	btst #1, records.Entry.TemplateFlags+1(a1)
+	beq.w bad
+ok
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; checkTemplate
+
+; D0=source index,A0=state. Aggregate all reference origins, including references
+; before declaration. Preserves all registers; CCR unspecified.
+reference	.block
+	movem.l d0-d1/a0-a2, -(sp)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l FLAGS_POINTER(a0), a1
+	movea.l ORIGINS_POINTER(a0), a2
+	adda.l d0, a1
+	btst #1, 1(a1)
+	suba.l d0, a1
+	bne.w previous
+	adda.l d0, a1
+	ori.w #USED, 0(a1)
+	suba.l d0, a1
+	move.w State.Active(a0), 0(a2, d0.l)
+	bra.w done
+previous
+	move.w State.Active(a0), d1
+	adda.l d0, a2
+	cmp.w 0(a2), d1
+	suba.l d0, a2
+	beq.w done
+	adda.l d0, a1
+	ori.w #MIXED, 0(a1)
+	suba.l d0, a1
+done
+	movem.l (sp)+, d0-d1/a0-a2
+	rts
+	.bend  ; reference
+
+; A0=state,D0=reference index,D1=resolved declaration index. Public definitions
+; permit every origin; a private definition requires all uses from its owner.
+; D0/CCR=status; other registers preserved.
+check	.block
+	movem.l d1-d3/a0-a2, -(sp)
+	andi.l #$ffff, d0
+	add.l d0, d0
+	andi.l #$ffff, d1
+	add.l d1, d1
+	movea.l FLAGS_POINTER(a0), a1
+	move.w 0(a1, d0.l), d2
+	btst #1, d2
+	beq.w ok
+	adda.l d1, a1
+	btst #0, 1(a1)
+	suba.l d1, a1
+	bne.w ok
+	movea.l OWNERS_POINTER(a0), a2
+	adda.l d1, a2
+	tst.w 0(a2)
+	suba.l d1, a2
+	beq.w ok  ; private global symbols remain visible across modules
+	btst #2, d2
+	bne.w bad
+	movea.l ORIGINS_POINTER(a0), a1
+	move.w 0(a1, d0.l), d3
+	movea.l OWNERS_POINTER(a0), a1
+	adda.l d1, a1
+	cmp.w 0(a1), d3
+	suba.l d1, a1
+	bne.w bad
+ok
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	movem.l (sp)+, d1-d3/a0-a2
+	tst.l d0
+	rts
+	.bend  ; check
+
+; D0=module source index,A0=metadata,A1=lexical.State,A2=unused,
+; A3=scope state,A4=source binder callback. Caller proves root scope and ID bounds.
+; Build dotted lexical prefixes separately from module identity. Binder follows
+; writer ABI and preserves D3-D7/A2-A6. D0/CCR=status, other registers preserved.
+open	.block
+	movem.l d1-d7/a0-a6, -(sp)
+	suba.l #records.NAME_BYTES, sp  ; stable spelling while prefix binding grows
+	.TELEMETRY_SERVICE_ENTER runtime_profile.OPFORGE_RUNTIME_SERVICE_STATE
+	movea.l a0, a6
+	movea.l a1, a5
+	move.l d0, d7
+	andi.l #$ffff, d7
+	tst.w State.Active(a6)
+	bne.w bad
+	tst.w State.Outside(a6)
+	bne.w bad
+	move.l d0, d1
+	andi.l #$ffff, d1
+	add.l d1, d1
+	movea.l FLAGS_POINTER(a6), a0
+	adda.l d1, a0
+	btst #3, 1(a0)
+	suba.l d1, a0
+	bne.w bad  ; explicit module identities cannot reopen
+	move.l d7, d0
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	lea LexicalEntry, a0
+	moveq #0, d0
+	move.l records.Entry.Name(a0), d0
+	moveq #0, d6
+	move.w records.Entry.Length(a0), d6
+	movea.l a5, a0
+	movea.l sp, a1
+	move.l d6, d1
+	jsr lexical.copyName
+	bne.w bad
+	movea.l sp, a2
+	cmpi.l #records.NAME_BYTES-1, d6
+	bhi.w bad
+	tst.l d6
+	beq.w bad
+	movea.l sp, a2
+	moveq #0, d5
+	moveq #0, d4
+scan
+	cmp.l d6, d5
+	bhs.w ready
+	cmpi.b #'.', 0(a2, d5.w)
+	bne.w next
+	tst.w d5
+	beq.w bad
+	cmpi.b #'.', -1(a2, d5.w)
+	beq.w bad
+	move.l d5, d0
+	addq.w #1, d0
+	cmp.w d6, d0
+	bhs.w bad
+	movea.l a2, a0
+	movea.l a3, a1
+	move.l d5, d0
+	jsr (a4)
+	tst.l d0
+	bne.w bad
+	sub.w State.Base(a6), d1
+	andi.l #$ffff, d1
+	move.l d1, d0
+	move.l d0, LexicalIndex
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	move.w d4, records.Entry.Owner(a1)
+	move.l LexicalIndex, d0
+	jsr lexical.writeEntry
+	bne.w bad
+	addq.w #1, d1
+	move.w d1, d4
+next
+	addq.w #1, d5
+	bra.w scan
+ready
+	move.l d7, d0
+	movea.l a5, a0
+	lea LexicalEntry, a1
+	jsr lexical.readEntry
+	bne.w bad
+	move.w d4, records.Entry.Owner(a1)
+	move.w #KIND_MODULE, records.Entry.ScopeKind(a1)
+	move.l d7, d0
+	jsr lexical.writeEntry
+	bne.w bad
+	move.l d7, d0
+	andi.l #$ffff, d0
+	add.l d0, d0
+	movea.l FLAGS_POINTER(a6), a0
+	adda.l d0, a0
+	ori.w #MODULE_ID, 0(a0)
+	suba.l d0, a0
+	addq.w #1, d7
+	move.w d7, State.Active(a6)
+	move.w #1, State.Explicit(a6)
+	clr.w State.Visibility(a6)
+	moveq #0, d0
+	bra.w done
+bad
+	moveq #1, d0
+done
+	.TELEMETRY_SERVICE_LEAVE
+	adda.l #records.NAME_BYTES, sp
+	movem.l (sp)+, d1-d7/a0-a6
+	tst.l d0
+	rts
+	.bend  ; open
+
+; A0=metadata,D0=current lexical scope index+1. Close only the module frame;
+; a nested unclosed block/namespace cannot be silently discarded.
+; D0/CCR=status; other registers preserved.
+close	.block
+	tst.w State.Active(a0)
+	beq.w bad
+	cmp.w State.Active(a0), d0
+	bne.w bad
+	clr.w State.Active(a0)
+	clr.w State.Visibility(a0)
+	moveq #0, d0
+	rts
+bad
+	moveq #1, d0
+	rts
+	.bend  ; close
+	.endsection
+	.section bss, kind=bss
+; Accessor scratch is consumed before any callback; no Entry view escapes.
+LexicalEntry	.res byte, records.ENTRY_BYTES
+LexicalIndex	.res long, 1
+	.endsection
+	.endmodule

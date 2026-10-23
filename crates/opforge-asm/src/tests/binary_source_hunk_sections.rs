@@ -483,7 +483,7 @@ fn native_hunk_bytes(source: &str, oracle: &[u8]) {
     assert_eq!(runs[0].exit_code, Some(0));
     let image = runs[0]
         .captured_artifacts
-        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .get(&PathBuf::from("Work/build/opforge"))
         .expect("fresh compact executable");
     eprintln!(
         "COMPACT_HUNK_SECTIONS seconds={:?} image_bytes={} linked_reserved_bytes={} output_bytes={}",

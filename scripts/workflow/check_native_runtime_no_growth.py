@@ -19,11 +19,6 @@ BLOCK_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", re.MULTILINE)
 MODULE_RE = re.compile(r"^\s*\.module\s+([^\s;]+)", re.MULTILINE)
 OWNER_RE = re.compile(r"^\s*;\s*@opforge-owner:\s*(\S+)\s*$", re.MULTILINE)
 ROLE_RE = re.compile(r"^\s*;\s*@opforge-role:\s*(\S+)\s*$", re.MULTILINE)
-MUTABLE_ENGINE_RE = re.compile(
-    r"\bOpasmEngine(?:Context|AssemblySession[A-Za-z0-9_]*|Session[A-Za-z0-9_]*|"
-    r"Source[A-Za-z0-9_]*|Stmt[A-Za-z0-9_]*|Label[A-Za-z0-9_]*|Image[A-Za-z0-9_]*)\b",
-    re.IGNORECASE,
-)
 ALLOWED_HOTSPOT_ROLES = {"facade", "delegation"}
 
 
@@ -104,30 +99,10 @@ def validate_hotspots(root: Path, baseline: Baseline) -> list[str]:
     return errors
 
 
-def strip_asm_comment_and_strings(line: str) -> str:
-    code = line.split(";", 1)[0]
-    return re.sub(r'"(?:[^"\\]|\\.)*"', '""', code)
-
-
-def validate_tkpkg_engine_state(root: Path) -> list[str]:
-    errors: list[str] = []
-    tkpkg_root = root / NATIVE_ROOT / "tkpkg"
-    for path in sorted(tkpkg_root.glob("*.asm")):
-        relative = path.relative_to(root).as_posix()
-        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-            code = strip_asm_comment_and_strings(line)
-            match = MUTABLE_ENGINE_RE.search(code)
-            if match:
-                errors.append(
-                    f"{relative}:{line_number}: direct tkpkg access to opasm mutable state: {match.group(0)}"
-                )
-    return errors
-
-
 def is_production_semantic_module(relative: str, text: str) -> bool:
     if not relative.startswith(f"{NATIVE_ROOT.as_posix()}/"):
         return False
-    if "/test-harnesses/" in relative or "/debug/" in relative:
+    if "/tests/" in relative or "/debug/" in relative:
         return False
     return bool(MODULE_RE.search(text) and BLOCK_RE.search(text))
 
@@ -151,7 +126,6 @@ def validate(root: Path = ROOT, baseline_path: Path | None = None) -> list[str]:
     baseline = load_baseline(baseline_path or root / BASELINE.relative_to(ROOT))
     return [
         *validate_hotspots(root, baseline),
-        *validate_tkpkg_engine_state(root),
         *validate_new_modules(root, baseline),
     ]
 

@@ -639,7 +639,7 @@ fn compact_cli_fs_uae() {
     assert_eq!(runs[0].exit_code, Some(0));
     let image = runs[0]
         .captured_artifacts
-        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .get(&PathBuf::from("Work/build/opforge"))
         .expect("fresh compact CLI image");
     let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
     assert!(allocation.total() < 2 * 1024 * 1024);
@@ -713,7 +713,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
         .map(PathBuf::from)
         .unwrap_or_else(|| workspace_root().join("native/motorola68000/amigaos"));
     let root = fs::canonicalize(root).expect("canonical self-host source root");
-    let entry = "experimental/opforge_compact_cli.asm";
+    let entry = "main.asm";
     let module_roots = [
         "experimental",
         "opforge-cli",
@@ -750,7 +750,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     run_with_validated_cli_with_context(&cli, &config)
         .expect("live Rust compact self-build succeeds");
     let hunk_oracle =
-        fs::read(oracle_dir.join("build/opforge_compact")).expect("read fresh Rust compact Hunk");
+        fs::read(oracle_dir.join("build/opforge")).expect("read fresh Rust compact Hunk");
     assert!(!hunk_oracle.is_empty());
     let hunk_allocation = hunk::allocation(&hunk_oracle).expect("valid Rust compact Hunk");
     let dependencies = fs::read_to_string(&dependency_path).expect("read live dependency manifest");
@@ -847,7 +847,7 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
     assert_eq!(runs.len(), 1);
     assert!(runs[0].protocol_completed);
     assert_eq!(runs[0].exit_code, Some(0));
-    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge_compact")];
+    let image = &runs[0].captured_artifacts[&PathBuf::from("Work/build/opforge")];
     let native_allocation = hunk::allocation(image).expect("native executable allocation");
     let assembly_position = progress::failure_position(&runs[0].stdout);
     if std::env::var("OPFORGE_PREPARATION_PROGRESS").as_deref() == Ok("1")
@@ -1040,10 +1040,10 @@ fn compact_cli_self_host_entry_readiness_fs_uae() {
 #[ignore = "requires configured FS-UAE; isolate the next full self-host source module"]
 fn compact_cli_self_host_descriptor_module_fs_uae() {
     let root = workspace_root().join("native/motorola68000/amigaos");
-    let descriptor = fs::read(root.join("prvm/prvm_macro_descriptors.asm")).unwrap();
-    let packed_macro = fs::read(root.join("prvm/prvm_packed_macro.asm")).unwrap();
-    let entry = b".module descriptor_probe\n.cpu m68020\n.use prvm.amigaos.macro_descriptors as desc\n.use prvm.amigaos.packed_macro as packed\n.section entry, kind=code\n.long desc.State.ListEnd,packed.State.ListEnd\n.endsection\n.output \"build/descriptors.hunk\", format=hunk, sections=entry,code\n.endmodule\n";
-    let abi = fs::read(root.join("prvm/prvm_abi.asm")).unwrap();
+    let descriptor = fs::read(root.join("vm/prvm/macro_descriptors.asm")).unwrap();
+    let packed_macro = fs::read(root.join("vm/prvm/packed_macro.asm")).unwrap();
+    let entry = b".module descriptor_probe\n.cpu m68020\n.use opforge.vm.prvm.macro_descriptors as desc\n.use opforge.vm.prvm.packed_macro as packed\n.section entry, kind=code\n.long desc.State.ListEnd,packed.State.ListEnd\n.endsection\n.output \"build/descriptors.hunk\", format=hunk, sections=entry,code\n.endmodule\n";
+    let abi = fs::read(root.join("vm/prvm/abi.asm")).unwrap();
     let telemetry = fs::read(root.join("debug/telemetry_macros.i")).unwrap();
     let telemetry_noop = fs::read(root.join("debug/telemetry_macros_noop.i")).unwrap();
     let oracle_dir = create_temp_dir("compact-self-host-descriptor-oracle");
@@ -1053,12 +1053,12 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
     let input = oracle_dir.join("experimental/probe.asm");
     fs::write(&input, entry).unwrap();
     fs::write(
-        oracle_dir.join("prvm/prvm_macro_descriptors.asm"),
+        oracle_dir.join("vm/prvm/macro_descriptors.asm"),
         &descriptor,
     )
     .unwrap();
-    fs::write(oracle_dir.join("prvm/prvm_packed_macro.asm"), &packed_macro).unwrap();
-    fs::write(oracle_dir.join("prvm/prvm_abi.asm"), &abi).unwrap();
+    fs::write(oracle_dir.join("vm/prvm/packed_macro.asm"), &packed_macro).unwrap();
+    fs::write(oracle_dir.join("vm/prvm/abi.asm"), &abi).unwrap();
     fs::write(oracle_dir.join("debug/telemetry_macros.i"), &telemetry).unwrap();
     fs::write(
         oracle_dir.join("debug/telemetry_macros_noop.i"),
@@ -1085,9 +1085,9 @@ fn compact_cli_self_host_descriptor_module_fs_uae() {
     let package = prepare_package(&core, &resolved).unwrap();
     let files = [
         ("experimental/probe.asm", entry.as_slice()),
-        ("prvm/prvm_macro_descriptors.asm", descriptor.as_slice()),
-        ("prvm/prvm_packed_macro.asm", packed_macro.as_slice()),
-        ("prvm/prvm_abi.asm", abi.as_slice()),
+        ("vm/prvm/macro_descriptors.asm", descriptor.as_slice()),
+        ("vm/prvm/packed_macro.asm", packed_macro.as_slice()),
+        ("vm/prvm/abi.asm", abi.as_slice()),
         ("debug/telemetry_macros.i", telemetry.as_slice()),
         ("debug/telemetry_macros_noop.i", telemetry_noop.as_slice()),
     ];
@@ -1164,7 +1164,7 @@ fn compact_cli_segment_fs_uae() {
         assert_eq!(runs[0].exit_code, Some(0));
         let image = runs[0]
             .captured_artifacts
-            .get(&PathBuf::from("Work/build/opforge_compact"))
+            .get(&PathBuf::from("Work/build/opforge"))
             .expect("fresh compact CLI image");
         let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
         assert!(allocation.total() < 2 * 1024 * 1024);
@@ -1264,7 +1264,7 @@ fn compact_cli_macro_scope_fs_uae() {
         assert_eq!(runs[0].exit_code, Some(0));
         let image = runs[0]
             .captured_artifacts
-            .get(&PathBuf::from("Work/build/opforge_compact"))
+            .get(&PathBuf::from("Work/build/opforge"))
             .expect("fresh compact CLI image");
         let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
         assert!(allocation.total() < 2 * 1024 * 1024);
@@ -2148,7 +2148,7 @@ fn compact_cli_macro_repeat_comparison_fs_uae() {
     assert_eq!(run.exit_code, Some(0));
     let image = run
         .captured_artifacts
-        .get(&PathBuf::from("Work/build/opforge_compact"))
+        .get(&PathBuf::from("Work/build/opforge"))
         .expect("fresh compact CLI image");
     let allocation = hunk::allocation(image).expect("valid compact CLI Hunk");
     assert!(allocation.total() < 2 * 1024 * 1024);

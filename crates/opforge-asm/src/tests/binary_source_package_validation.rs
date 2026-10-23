@@ -254,7 +254,7 @@ fn source(root: &Path) -> String {
     let mut source = String::from(
         r#".module validation_probe
 .cpu 68020
-.use experimental.amigaos.binary_package_validation as validation
+.use opforge.packages.validation as validation
 EXEC_OPEN_LIBRARY = -552
 EXEC_CLOSE_LIBRARY = -414
 DOS_OPEN = -30
@@ -353,34 +353,33 @@ Payload .res byte,PACKAGE_CAPACITY
 .endmodule
 "#,
     );
-    let directory = root.join("native/motorola68000/amigaos/experimental");
+    let directory = root.join("native/motorola68000/amigaos");
     for name in [
-        "prvm_abi.asm",
-        "prvm_packed_branch.asm",
-        "prvm_packed_declaration.asm",
-        "prvm_packed_text.asm",
-        "prvm_statement_abi.asm",
-        "prvm_statement_inputs.asm",
-        "prvm_statement_text.asm",
-        "prvm_statement_facets.asm",
-        "prvm_statement_policy.asm",
-        "prvm_statement_request.asm",
-        "prvm_statement_plan.asm",
-        "prvm_statement_compile.asm",
-        "prvm_statement_match.asm",
-        "prvm_statement_head.asm",
+        "vm/prvm/abi.asm",
+        "vm/prvm/packed_branch.asm",
+        "vm/prvm/packed_declaration.asm",
+        "vm/prvm/packed_text.asm",
+        "vm/prvm/statement_abi.asm",
+        "vm/prvm/statement_inputs.asm",
+        "vm/prvm/statement_text.asm",
+        "vm/prvm/statement_facets.asm",
+        "vm/prvm/statement_policy.asm",
+        "vm/prvm/statement_request.asm",
+        "vm/prvm/statement_plan.asm",
+        "vm/prvm/statement_compile.asm",
+        "vm/prvm/statement_match.asm",
+        "vm/prvm/statement_head.asm",
     ] {
         source.push_str(
-            &std::fs::read_to_string(root.join("native/motorola68000/amigaos/prvm").join(name))
-                .unwrap(),
+            &std::fs::read_to_string(root.join("native/motorola68000/amigaos").join(name)).unwrap(),
         );
         source.push('\n');
     }
     for name in [
-        "binary_package.asm",
-        "binary_state.asm",
-        "binary_memory.asm",
-        "binary_package_validation.asm",
+        "packages/format.asm",
+        "assembler/layout/state.asm",
+        "platform/memory.asm",
+        "packages/validation.asm",
     ] {
         let module = std::fs::read_to_string(directory.join(name)).unwrap();
         source.push_str(&module);

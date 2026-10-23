@@ -733,14 +733,14 @@ fn overlay_stages_transitive_explicit_modules_by_declared_module_id() {
     let root_uri = path_to_file_uri(&root_file);
     let tokenizer_uri = path_to_file_uri(&tokenizer_file);
 
-    write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
+    write_text(&root_file, ".use opforge.tests.tkvm.tokvm_cli_harness\n");
     write_text(
         &harness_file,
-        ".module tokvm.amigaos.cli_harness\n.use tkvm.amigaos.runtime\n.endmodule\n",
+        ".module opforge.tests.tkvm.tokvm_cli_harness\n.use opforge.vm.tkvm.runtime\n.endmodule\n",
     );
     write_text(
         &tokenizer_file,
-        ".module tkvm.amigaos.runtime\n@\n.endmodule\n",
+        ".module opforge.vm.tkvm.runtime\n@\n.endmodule\n",
     );
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
@@ -762,7 +762,7 @@ fn overlay_stages_transitive_explicit_modules_by_declared_module_id() {
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".use tokvm.amigaos.cli_harness\n"
+                "text": ".use opforge.tests.tkvm.tokvm_cli_harness\n"
             }
         }),
     );
@@ -811,14 +811,14 @@ fn overlay_stages_transitive_explicit_modules_without_configured_roots() {
     let root_uri = path_to_file_uri(&root_file);
     let tokenizer_uri = path_to_file_uri(&tokenizer_file);
 
-    write_text(&root_file, ".use tokvm.amigaos.cli_harness\n");
+    write_text(&root_file, ".use opforge.tests.tkvm.tokvm_cli_harness\n");
     write_text(
         &harness_file,
-        ".module tokvm.amigaos.cli_harness\n.use tkvm.amigaos.runtime\n.endmodule\n",
+        ".module opforge.tests.tkvm.tokvm_cli_harness\n.use opforge.vm.tkvm.runtime\n.endmodule\n",
     );
     write_text(
         &tokenizer_file,
-        ".module tkvm.amigaos.runtime\n@\n.endmodule\n",
+        ".module opforge.vm.tkvm.runtime\n@\n.endmodule\n",
     );
 
     let mut client = LspTestClient::spawn().expect("spawn lsp");
@@ -839,7 +839,7 @@ fn overlay_stages_transitive_explicit_modules_without_configured_roots() {
                 "uri": root_uri,
                 "version": 1,
                 "languageId": "opforge",
-                "text": ".use tokvm.amigaos.cli_harness\n"
+                "text": ".use opforge.tests.tkvm.tokvm_cli_harness\n"
             }
         }),
     );

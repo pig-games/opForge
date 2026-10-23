@@ -2,7 +2,7 @@
 .ifdef OPFORGE_LAZY_AUDIT
 .ifdef OPFORGE_LAZY_WORK
 .ifdef OPFORGE_LAZY_CANDIDATES
-	.use debug.amigaos.lazy_work as candidate_audit
+	.use opforge.debug.lazy_work as candidate_audit
 .endif
 .endif
 .endif

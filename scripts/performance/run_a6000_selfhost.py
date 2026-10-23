@@ -101,7 +101,7 @@ def has_m68020_entry_preamble(entry):
 
 
 def checked_native_output_file(value):
-    if value not in ("output.hunk", "build/opforge_compact"):
+    if value not in ("output.hunk", "build/opforge"):
         raise ValueError(f"Unsupported native output file: {value!r}")
     return value
 
@@ -188,10 +188,10 @@ def load_bundle(bundle):
                 raise ValueError("Duplicate embedded source origin")
             origins[origin] = (logical.as_posix(), data)
             if origin == "configured_entry":
-                if logical.as_posix() != "experimental/opforge_compact_cli.asm":
+                if logical.as_posix() != "main.asm":
                     raise ValueError("Invalid configured entry mapping")
                 original = (Path(manifest["source_root"]) / logical).read_bytes()
-                literal = b'.include "package_catalog.i"'
+                literal = b'.include "packages/catalog.i"'
                 if original.count(literal) != 1:
                     raise ValueError("Configured entry requires exactly one catalog include")
                 expected = original.replace(literal, b'.include "catalog.i"')
@@ -332,7 +332,7 @@ def load_bundle(bundle):
             raise ValueError("Require exactly the embedded output package and source origins")
         catalog_path, catalog = origins["generated_catalog"]
         asset_path, asset = origins["package_asset"]
-        if catalog_path != "experimental/catalog.i" or asset_path != f"experimental/packages/{package_file}":
+        if catalog_path != "catalog.i" or asset_path != f"packages/{package_file}":
             raise ValueError("Invalid embedded source mapping")
         if asset != package:
             raise ValueError("Embedded source package asset mismatch")
@@ -369,17 +369,17 @@ def load_bundle(bundle):
         source_cpu = re.fullmatch(r"opforge " + command_tail, validated_command)
         source_directed_output = (
             validated_command ==
-            "opforge -i src/experimental/opforge_compact_cli.asm -M src -I src/debug"
+            "opforge -i src/main.asm -M src -I src/debug"
         )
         if source_directed_output:
-            entry_path = "src/experimental/opforge_compact_cli.asm"
+            entry_path = "src/main.asm"
             entry = files.get(entry_path)
-            if (native_output_file != "build/opforge_compact"
+            if (native_output_file != "build/opforge"
                     or output_storage != "embedded"
                     or manifest.get("entry") != entry_path
                     or entry is None
                     or origins.get("configured_entry", (None, None))[0]
-                    != "experimental/opforge_compact_cli.asm"
+                    != "main.asm"
                     or not has_m68020_entry_preamble(entry)):
                 raise ValueError(
                     "Source-directed output requires the mapped m68020 embedded entry and explicit build output"
@@ -407,7 +407,7 @@ def load_bundle(bundle):
         identity.extend(b"\0embedded-bootstrap\0" + bootstrap)
     # Bind accounting to this executable's validated source before a comparison
     # replaces the workload files with a frozen baseline.
-    capture_source = files.get("src/experimental/binary_capture.asm")
+    capture_source = files.get("src/assembler/source/capture.asm")
     manifest["_validated_capture_record_header_bytes"] = (
         capture_record_header_bytes(capture_source.decode("utf-8"))
         if "OPFORGE_CAPTURE_TELEMETRY" in defines and capture_source is not None else None)
@@ -449,7 +449,7 @@ def verify_files(root, files):
 
 def verify_fresh_directory(root, native_output_file="output.hunk"):
     checked_native_output_file(native_output_file)
-    for name in ("output.hunk", "build/opforge_compact", "memory.bin",
+    for name in ("output.hunk", "build/opforge", "memory.bin",
                  "start.marker", "done.marker", "exitcode"):
         if (root / name).exists():
             raise ValueError(f"Pre-run directory contains an old result: {name}")
@@ -530,7 +530,7 @@ def add_telemetry(result, root, manifest, files=None, *, record_header_bytes=Non
         diagnostics.append("exclusive stage clocks disagree with preparation by more than 40 ms")
     if "OPFORGE_CAPTURE_TELEMETRY" in defines:
         try:
-            source_path = "src/experimental/binary_capture.asm"
+            source_path = "src/assembler/source/capture.asm"
             header_bytes = record_header_bytes
             if header_bytes is None:
                 if files is None or source_path not in files:

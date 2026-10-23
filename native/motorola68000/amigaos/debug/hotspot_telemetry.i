@@ -59,7 +59,7 @@ HOTSPOT_COUNTER_COUNT = 16
 .ifndef OPFORGE_HOTSPOT_TELEMETRY
 .include "hotspot_telemetry_noop.i"
 .else
-	.use debug.amigaos.hotspot_profile as hotspot_profile
+	.use opforge.debug.hotspot_profile as hotspot_profile
 
 HOTSPOT_CLEAR	.macro
 	move.w ccr, -(sp)

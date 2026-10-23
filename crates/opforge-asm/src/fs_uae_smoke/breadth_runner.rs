@@ -65,7 +65,7 @@ pub(crate) fn run_from_env(
         return Err("breadth audit requires an image, cases and batch_size in 1..=64".into());
     }
     if std::env::var("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE").as_deref() == Ok("1") {
-        return Err("breadth correctness batching cannot run diagnostic/timing capture".into());
+        return Err("OPFORGE_NATIVE_CORPUS_LIVE_CAPTURE uses the retired OFPR progress protocol; use the current console-debugger tools for inspection".into());
     }
     if std::env::var("OPFORGE_FS_UAE_SMOKE").as_deref() != Ok("1") {
         return Err("breadth native execution requires OPFORGE_FS_UAE_SMOKE=1".into());
@@ -106,7 +106,7 @@ fn append_case_script(
     script.push_str(&format!(
         "C:Assign Work: OPForgeBatch:cases/case_{index:04}\nIf WARN\nQuit 20\nEndIf\nCD Work:\nIf WARN\nQuit 20\nEndIf\n\
          Echo \"{}\" >{}/{}\n\
-         OPForgeBatch:build/opforge_compact {} >{}/{} *>{}/{}\n\
+         OPForgeBatch:build/opforge {} >{}/{} *>{}/{}\n\
          Echo $RC >{}/{}\nEcho \"{}\" >{}/{}\n",
         paths.expected_started,
         paths.guest_artifact_dir,
@@ -209,7 +209,7 @@ fn execute_batch(
     let artifact_dir = create_artifact_dir(workspace_root, "fs-uae-compact-breadth")?;
     let ephemeral_artifact_dir = EphemeralArtifactDir(artifact_dir.clone());
     let work = artifact_dir.join(FS_UAE_MOUNTED_WORK_DIR_NAME);
-    stage_guest_input_bytes(&work, "build/opforge_compact", image)?;
+    stage_guest_input_bytes(&work, "build/opforge", image)?;
     let challenge = opforge_native_cli_run_challenge();
     let mut script = String::from("FailAt 999\n");
     let mut staged = Vec::new();
@@ -257,7 +257,7 @@ fn execute_batch(
         cases,
         &staged,
         &artifact_dir,
-        &work.join("build/opforge_compact"),
+        &work.join("build/opforge"),
         image,
         completed,
         launch,
@@ -441,7 +441,7 @@ fn collect_case(
         })
         .collect();
     let mut run = FsUaeSmokeRun {
-        example_name: "opforge_compact_breadth",
+        example_name: "opforge_breadth",
         source_path: paths.artifact_dir.join("input.bin"),
         artifact_dir: artifact_dir.into(),
         hunk_path: image_path.into(),
@@ -503,9 +503,7 @@ fn launch_batch(
     let mut errors = Vec::new();
     match wait_for_batch(&mut child, staged, &baseline) {
         Ok(()) => {
-            if let Err(error) =
-                wait_for_process_exit_after_capture(&mut child, "opforge_compact_breadth")
-            {
+            if let Err(error) = wait_for_process_exit_after_capture(&mut child, "opforge_breadth") {
                 errors.push(error);
             }
         }

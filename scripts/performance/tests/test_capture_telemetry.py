@@ -98,7 +98,7 @@ class CaptureTelemetryTests(unittest.TestCase):
 
     def test_declared_source_layout_controls_frozen_observations(self):
         source = (Path(__file__).parents[3] /
-                  "native/motorola68000/amigaos/experimental/binary_capture.asm").read_text()
+                  "native/motorola68000/amigaos/assembler/source/capture.asm").read_text()
         self.assertEqual(decoder.capture_record_header_bytes(source), 56)
         self.assertEqual(decoder.capture_record_header_bytes(source, defines=["OPFORGE_LAZY_WORK"]), 56)
         work = ["OPFORGE_LAZY_AUDIT", "OPFORGE_LAZY_WORK"]
@@ -159,7 +159,7 @@ HEADER_BYTES = Record.Tokens
 
     def test_cli_capture_defines_select_layout_and_require_source(self):
         source = (Path(__file__).parents[3] /
-                  "native/motorola68000/amigaos/experimental/binary_capture.asm")
+                  "native/motorola68000/amigaos/assembler/source/capture.asm")
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "stdout.txt"
             path.write_text(self.capture(header_bytes=60) + "\n" +

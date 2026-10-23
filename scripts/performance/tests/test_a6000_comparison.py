@@ -125,7 +125,7 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
             package.extend(b"different-package")
             package[4:8] = len(package).to_bytes(4, "big")
             package_path.write_bytes(package)
-            (candidate / "src/experimental/packages/m68020--motorola68k.bin").write_bytes(package)
+            (candidate / "src/packages/m68020--motorola68k.bin").write_bytes(package)
             manifest = json.loads((candidate / "manifest.json").read_text())
             manifest["runtime_package_digest"] = runner.fnv(package)
             self.save_manifest(candidate, manifest)

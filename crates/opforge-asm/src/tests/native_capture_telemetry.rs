@@ -41,11 +41,11 @@ const GATES: [&str; 3] = [
     "OPFORGE_MEMORY_TELEMETRY",
     "OPFORGE_CAPTURE_TELEMETRY",
 ];
-const OBSERVER: &str = "native/motorola68000/amigaos/debug/opforge_capture_profile.asm";
+const OBSERVER: &str = "native/motorola68000/amigaos/debug/capture_profile.asm";
 
 fn wrapper_source(sites: &str, stub: bool) -> String {
     let stub = if stub {
-        let mut source = String::from(".module debug.amigaos.capture_profile\n.cpu 68020\n.pub\nBlockView .struct\nPointer .long ?\nCapacity .long ?\nUsed .long ?\n.endstruct\n.section code, kind=code\n");
+        let mut source = String::from(".module opforge.debug.capture_profile\n.cpu 68020\n.pub\nBlockView .struct\nPointer .long ?\nCapacity .long ?\nUsed .long ?\n.endstruct\n.section code, kind=code\n");
         for name in [
             "clear",
             "growBegin",
@@ -457,7 +457,7 @@ fn native_capture_telemetry_compact_cli_fs_uae() {
         let build = build_native_packages(
             &engine::build_default_asm_registry(),
             &dir.0.join("native"),
-            &root.join("native/motorola68000/amigaos/experimental/opforge_compact_cli.asm"),
+            &root.join("native/motorola68000/amigaos/main.asm"),
             &EmbedSelection::Targets(vec!["68020".into()]),
         )
         .unwrap();
@@ -665,7 +665,7 @@ compare_{flags}_{index}
     format!(
         r#".module probe
 .cpu 68020
-.use debug.amigaos.capture_profile as observer
+.use opforge.debug.capture_profile as observer
 .include "capture_telemetry.i"
 .section entry,kind=code
 start .block
@@ -708,7 +708,7 @@ AfterCCR .res word,1
 .output "build/capture-probe",format=hunk,sections=entry,code,data,bss
 .endmodule
 {observer}
-.module debug.amigaos.memory_profile
+.module opforge.debug.memory_profile
 .cpu 68020
 .pub
 .section code,kind=code

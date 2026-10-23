@@ -58,7 +58,7 @@ def main() -> int:
     parser.add_argument("--staged", action="store_true")
     args = parser.parse_args()
     root = Path(args.root).resolve()
-    ids = read_text(root, "native/motorola68000/amigaos/debug/debug_contract_ids.asm")
+    ids = read_text(root, "native/motorola68000/amigaos/debug/contracts.asm")
     docs = read_text(root, "documentation/architecture/native-debug-contracts.md")
     asm = {
         path.relative_to(root).as_posix(): path.read_text(encoding="utf-8")

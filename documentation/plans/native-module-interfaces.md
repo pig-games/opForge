@@ -6,6 +6,12 @@ The promoted product's current full cold/incremental qualification is recorded i
 the [native assembler plan](native-runtime-reset.md#current-product-state). Earlier
 measurements below retain their own source/configuration scope.
 
+The current external-package release also passes its physical A6000 cold/warm
+pair: **1,066/90 seconds**, exact complete 348,752-byte Rust output matches,
+190 modules rebuilt cold and all 190 reused warm. The downloaded capture confirms
+one shared `build/ofm` set. This hardware run does not measure peak memory or
+restrict installed RAM; the linked current qualification records its identity.
+
 Current-build `.ofm` objects carry numeric assembly interfaces alongside linker
 data. `OFMA` is the checked interface directory and dependency/import map;
 `OFMS` stores semantic exports, members, names, and compound-value arenas;
@@ -157,7 +163,8 @@ invalidation regression cannot erase the measurement that exposes it.
 
 For a serial hardware comparison, run
 `python3 scripts/performance/run_a6000_incremental.py --bundle DIR` from macOS
-Terminal with a release embedded, source-directed self-host bundle. It discovers
+Terminal with a release, source-directed self-host bundle. External packages are
+the default; explicitly embedded bundles are also supported. It discovers
 the current address with `ash -l`, uploads to `Development:`, then performs a
 forced rebuild and unchanged incremental build in the same directory. Each phase
 has separate guest timing, fresh markers, return-code/output verification and

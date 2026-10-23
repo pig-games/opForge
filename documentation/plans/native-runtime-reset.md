@@ -26,8 +26,21 @@ separate package is 478,042 bytes. Moving that payload out of the executable is
 not a corresponding peak-RAM saving: the runtime loads it into memory. Peak heap
 was not remeasured and 2 MiB fit remains unproved. These unrestricted-speed
 FS-UAE durations are effectively unchanged from the preceding external-package
-snapshot (282/59 s); they do not establish a speed improvement. A6000 validation
-is pending.
+snapshot (282/59 s); they do not establish a speed improvement.
+
+The same external-package release passes the physical A6000 cold/warm pair
+reported on 2026-10-23: **1,066 s (17m 46s) cold**, **90 s (1m 30s) warm**.
+Cold rebuilds all 190 modules; warm reuses all 190 and rebuilds none. Both phases
+have fresh completed protocol, exit/copy status zero and exact entire Rust Hunk
+equality. The downloaded capture was independently rechecked against the bundle's
+input bytes, oracle and case identity
+`de108f5e4239829bdc6fcd5326bfece58602155b0bb368e8278974b0895d897c`.
+Its final tree contains only one set of 190 `.ofm` images and 190 `.ofi` companions
+under `build/ofm`, with no numbered object directories. The pair's host interval
+is 1,157.230 s including connection; guest clocks resolve to one second. Hardware
+RAM is unrestricted/unmeasured, so this is separate from the 8 MiB emulator proof.
+The earlier 916/98 s hardware pair used different sources and an embedded package;
+it does not isolate the cost of the shared-store or package-default changes.
 
 Disk-backed linking and incremental reuse share `build/ofm` (or
 `--incremental-dir`). After the cold/warm pair, it contains one set of 190 `.ofm`

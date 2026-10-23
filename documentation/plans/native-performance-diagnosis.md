@@ -1,10 +1,14 @@
 # Native runtime and memory status
 
-The promoted 2026-10-23 release completes full cold/incremental self-hosts in
-**281/59 seconds** on the established 8 MiB installed-Workbench FS-UAE setup.
-Both complete 826,708-byte outputs exactly match live Rust; cold rebuilds 190
-modules and warm reuses all 190. No fresh peak-heap result or isolated promotion
-speedup is claimed. The [native assembler plan](native-runtime-reset.md#current-product-state)
+The current 2026-10-23 external-package release completes full cold/incremental
+self-hosts in **283/59 seconds** on the established 8 MiB installed-Workbench
+FS-UAE setup and **1,066/90 seconds** on the physical A6000. Both complete
+348,752-byte outputs exactly match live Rust in each environment; cold rebuilds
+190 modules and warm reuses all 190. The A6000 capture also confirms one set of
+190 `.ofm` images and 190 `.ofi` companions under `build/ofm`. Hardware RAM was
+unrestricted and peak heap was not remeasured. Earlier hardware pairs use other
+source/package configurations and do not isolate this change's runtime impact.
+The [native assembler plan](native-runtime-reset.md#current-product-state)
 records source identity, configuration and qualification limits.
 
 The remaining measurements identify earlier source snapshots; their heap and

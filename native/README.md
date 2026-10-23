@@ -72,8 +72,11 @@ all 190 modules rebuild cold and all 190 are reused warm. Both exit zero and
 produce the full **348,752-byte executable exactly matching live Rust**, using
 the separate 478,042-byte m68020 package. Loading that package still consumes RAM;
 the executable size reduction is not a peak-memory measurement.
-These are FS-UAE 68020/unrestricted-speed durations; A6000 validation of this
-bundle is pending. Peak heap was not remeasured. See the
+These are FS-UAE 68020/unrestricted-speed durations. The same external-package
+bundle also passes on the physical A6000: **1,066 s cold (17m 46s)** and
+**90 s incremental**, with exact complete Rust output matches and all 190 modules
+reused warm. Its downloaded tree confirms one shared object set. Hardware RAM
+was unrestricted; peak heap was not remeasured. See the
 [current qualification and remaining limits](../documentation/plans/native-runtime-reset.md#current-product-state).
 Earlier hardware and memory measurements identify their own source snapshots.
 

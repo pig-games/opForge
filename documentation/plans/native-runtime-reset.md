@@ -5,11 +5,28 @@
 The maintained native AmigaOS assembler now starts at
 [`main.asm`](../../native/motorola68000/amigaos/main.asm), defaults to `.cpu 68020`,
 includes the checked-in external-only package catalog and emits `build/opforge`.
-The package builder can embed the selected m68020 payload and emits external
-target packages alongside the executable bundle. This
+The package builder and self-host exports default to loading packages from disk;
+embedding is an explicit option. Deploy `opforge` beside `packages/`. The builder
+can embed selected payloads and emits external target packages alongside the
+executable bundle. This
 promotion changes the product entry point; it does not claim complete Rust
 language, CPU-family or output parity. Full opcore and family parity, plus the
 2 MiB memory target, remain open.
+
+**Default external-package self-host qualified, 2026-10-23.** The unchanged
+native source export contains 277 mapped inputs (2,945,821 bytes), manifest
+`fnv1a64:c0dbb8bd6e20cb06`. Automatic package discovery uses the source's `.cpu`
+selection and `packages/m68020--motorola68k.bin`, without an explicit runtime
+package argument. Under the same 8 MiB Workbench/plain-background setup and
+64 KiB stack below, cold takes **282 s**, warm **59 s**; all 190 modules rebuild
+cold and all 190 are reused warm. Both phases exit zero and produce the complete
+348,664-byte executable exactly matching live Rust and the bootstrap, digest
+`fnv1a64:0e084435f0368038`. Linked static reservation is 390,392 bytes; the
+separate package is 478,042 bytes. Moving that payload out of the executable is
+not a corresponding peak-RAM saving: the runtime loads it into memory. Peak heap
+was not remeasured and 2 MiB fit remains unproved. These unrestricted-speed
+FS-UAE durations are effectively unchanged from the embedded qualification;
+they do not establish a speed improvement. A6000 validation is pending.
 
 **Promoted-source self-host qualified, 2026-10-23.** The release bundle contains
 278 mapped inputs (3,423,951 bytes), source manifest

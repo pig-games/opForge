@@ -15,9 +15,19 @@ import test_a6000_comparison as fixtures
 
 
 class RepeatabilityTests(unittest.TestCase):
-    def inputs(self, root):
+    def inputs(self, root, external=False):
         fixture = fixtures.FixedWorkloadComparisonTests('runTest')
-        release, _, _ = fixture.exports(root)
+        if external:
+            release = root / "release"
+            release.mkdir()
+            import test_a6000_selfhost
+            test_a6000_selfhost.HardwareCompletionTests("runTest").external_source_directed_bundle(release)
+            manifest = json.loads((release / "manifest.json").read_text())
+            manifest.update(kind="compact-self-host-local-export", manifest_version=1)
+            fixture.save_manifest(release, manifest)
+            fixture.refresh_sources(release)
+        else:
+            release, _, _ = fixture.exports(root)
         memory = fixture.memory_export(release, root / 'memory', 'current')
         manifest, files, oracle, _ = repeat.runner.load_bundle(release)
         frozen = root / 'frozen'
@@ -26,7 +36,7 @@ class RepeatabilityTests(unittest.TestCase):
         for key, data in [('image', b'old image'), ('oracle', oracle)]:
             (frozen / key).write_bytes(data)
             spec[key] = dict(path=key, digest=repeat.runner.fnv(data))
-        sources = {k: v for k, v in files.items() if k.startswith('src/')}
+        sources = {k: v for k, v in files.items() if k.startswith('src/') or k.startswith('packages/')}
         for i in range(214 - len(sources)):
             sources[f'src/frozen{i}.asm'] = f'; frozen {i}'.encode()
         for name, data in sorted(sources.items()):
@@ -70,6 +80,17 @@ class RepeatabilityTests(unittest.TestCase):
                 self.assertEqual('--capture-dir scratch' in case['manifest']['command'], case['storage'] == 'disk')
             self.assertEqual(cases[0]['case_sha256'], cases[2]['case_sha256'])
             self.assertNotEqual(cases[0]['case_sha256'], cases[1]['case_sha256'])
+
+    def test_external_frozen_package_remains_in_every_repeatability_case(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = self.inputs(Path(directory), external=True)
+            cases = repeat.prepare_cases(args)
+            package = "packages/m68020--motorola68k.bin"
+            expected = (args.release_bundle / package).read_bytes()
+            for case in cases:
+                self.assertEqual(case["files"][package], expected)
+                self.assertNotIn("p.bin", case["files"])
+                self.assertEqual(case["manifest"]["bootstrap_package_storage"], "external")
 
     def test_invalid_checksum_package_and_traversal_fail_before_network(self):
         for mutation in ('checksum', 'package', 'traversal'):

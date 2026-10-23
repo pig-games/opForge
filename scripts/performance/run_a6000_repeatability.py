@@ -86,10 +86,13 @@ def prepare_cases(args):
     oracle = checked_file(root, spec["oracle"])
     frozen = {}
     folded = set()
+    needs_external = (manifest.get("bootstrap_package_storage") == "external"
+                      or manifest.get("output_package_storage") == "external")
     for row in spec["files"]:
         name = row["guest_path"]
         path = Path(name)
-        if (path.is_absolute() or ".." in path.parts or not name.startswith("src/")
+        if (path.is_absolute() or ".." in path.parts
+                or not (name.startswith("src/") or (needs_external and name == "packages/m68020--motorola68k.bin"))
                 or path.as_posix() != name or name.lower() in folded):
             raise ValueError("Invalid or duplicate frozen guest path")
         folded.add(name.lower())
@@ -97,19 +100,16 @@ def prepare_cases(args):
     entry = re.search(r"(?:^| )-i ([^ ]+)(?: |$)", manifest["command"])
     if entry is None or entry.group(1) not in frozen:
         raise ValueError("Frozen workload lacks the current command entry source")
-    if len(frozen) != 214:
-        raise ValueError("Frozen workload must contain exactly 214 input files")
     digest = comparison.digest_parts([part for row in spec["files"] for part in
                                      (row["guest_path"].encode(), frozen[row["guest_path"]])])
     if digest != spec["staged_inputs_sha256"]:
         raise ValueError("Frozen staged input digest mismatch")
     package_file = manifest.get("runtime_package_file", "p.bin")
     package = (args.release_bundle / package_file).read_bytes()
-    asset = f"src/packages/{package_file}"
+    asset = (f"src/packages/{package_file}" if manifest.get("output_package_storage") == "embedded"
+             else "packages/m68020--motorola68k.bin")
     if frozen.get(asset) != package:
         raise ValueError("Frozen package asset must equal the current release package")
-    if manifest.get("bootstrap_package_storage") != "embedded" or manifest.get("output_package_storage") != "embedded":
-        raise ValueError("Frozen repeatability requires embedded input and output packages")
     frozen["opforge"] = current_files["opforge"]
     cases = []
 
@@ -125,7 +125,7 @@ def prepare_cases(args):
         workload_digest = comparison.digest_parts([
             b"opforge-a6000-repeatability-workload-v1",
             own["command"].removesuffix(" --capture-dir scratch").encode(), expected,
-            *(part for k, v in sorted(sources.items()) for part in (k.encode(), v))])
+            *(part for k, v in sorted(files.items()) if k != "opforge" for part in (k.encode(), v))])
         for key in ("native_protocol_completed", "native_assembler_exit_code", "native_start_to_done_host_seconds"):
             own.pop(key, None)
         if role != "current_source_selfhost":

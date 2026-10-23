@@ -11,18 +11,18 @@ a fresh absolute output directory whose parent already exists:
 
 ```sh
 cargo run -p asm --example build_native_packages -- \
-  --out-dir /tmp/opforge-native-build-20261023 \
-  --embed m68020
+  --out-dir /tmp/opforge-native-build-20261023
 ```
 
 The builder retains the assembly output at `build/opforge` and copies the
 deployable executable to `opforge` at the top of that directory, beside
-`packages/`. Ship that executable and its sibling package directory together.
-The m68020 package is embedded; the generated external packages support other
-target selections. The checked-in `packages/catalog.i` contains catalog metadata
-only. Directly assembling `main.asm` uses that external-only catalog and therefore
-needs the matching package files in its package root. The Rust product CLI and its
-command-line behavior are unchanged by this native promotion.
+`packages/`. Disk-loaded packages are the default: ship that executable and its
+sibling package directory together. Add `--embed m68020` to opt into embedding
+the m68020 package in the executable; any non-embedded target packages remain in
+`packages/`. The checked-in `packages/catalog.i` contains catalog metadata only.
+Directly assembling `main.asm` uses that external-only catalog and therefore
+needs the matching package files in its package root. The Rust product CLI and
+its command-line behavior are unchanged by this native promotion.
 
 The product covers a substantial shared assembler and package-backed runtime
 surface. Earlier focused Rust parity and full-source self-host evidence are
@@ -57,11 +57,13 @@ composition boundaries. Module semantic exports are owned by
 
 ## Validation and performance records
 
-The promoted release completes full cold and unchanged incremental self-hosts
-under 8 MiB total RAM, installed Workbench with a plain background, a 64 KiB
-stack and disk-backed capture. Cold takes **281 s**, incremental **59 s**;
+The default external-package release completes full cold and unchanged incremental
+self-hosts under 8 MiB total RAM, installed Workbench with a plain background, a 64 KiB
+stack and disk-backed capture. Cold takes **282 s**, incremental **59 s**;
 all 190 modules rebuild cold and all 190 are reused warm. Both exit zero and
-produce the full **826,708-byte executable exactly matching live Rust**.
+produce the full **348,664-byte executable exactly matching live Rust**, using
+the separate 478,042-byte m68020 package. Loading that package still consumes RAM;
+the executable size reduction is not a peak-memory measurement.
 These are FS-UAE 68020/unrestricted-speed durations; A6000 validation of this
 bundle is pending. Peak heap was not remeasured. See the
 [current qualification and remaining limits](../documentation/plans/native-runtime-reset.md#current-product-state).

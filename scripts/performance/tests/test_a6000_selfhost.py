@@ -369,6 +369,96 @@ class HardwareCompletionTests(unittest.TestCase):
                 files["src/" + logical] = b"different frozen workload"
                 self.assertEqual(validated["_validated_capture_record_header_bytes"], expected)
 
+    def external_source_directed_bundle(self, root):
+        self.bundle(root, False)
+        manifest = json.loads((root / "manifest.json").read_text())
+        package_path = "packages/m68020--motorola68k.bin"
+        package = self.package(b"m68020--motorola68k")
+        (root / "packages").mkdir()
+        (root / package_path).write_bytes(package)
+        (root / "p.bin").unlink()
+        sources = [("main.asm", b'.module main\n.cpu 68020\n.include "packages/catalog.i"\n.output "build/opforge", format=hunk\n'),
+                   ("packages/catalog.i", b'Catalog\n.long 16\n')]
+        rows = []
+        identity = bytearray()
+        for logical, data in sources:
+            for base in (root / "original", root / "src"):
+                path = base / logical
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(data)
+            rows.append({"logical_path": logical, "staged_path": "src/" + logical,
+                         "origin": "native", "bytes": len(data), "digest": runner.fnv(data)})
+            identity.extend(logical.encode() + b"\0" + data + b"\0")
+        command = "opforge -i src/main.asm -M src -I src/debug --capture-dir scratch"
+        manifest.update({"bootstrap_package_storage": "external", "embedded_packages": [],
+                         "output_package_storage": "external", "output_embedded_packages": [],
+                         "runtime_package_file": package_path, "runtime_package_digest": runner.fnv(package),
+                         "source_mapping": rows, "source_manifest_digest": runner.fnv(identity),
+                         "entry": "src/main.asm", "native_output_file": "build/opforge",
+                         "capture_mode": "disk", "command": command})
+        (root / "command.txt").write_text(command)
+        (root / "manifest.json").write_text(json.dumps(manifest))
+
+    def test_external_source_directed_transfers_verified_named_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.external_source_directed_bundle(root)
+            manifest, files, oracle, digest = runner.load_bundle(root)
+            self.assertEqual(files["opforge"], oracle)
+            self.assertEqual(files[manifest["runtime_package_file"]], (root / manifest["runtime_package_file"]).read_bytes())
+            self.assertIn("src/packages/catalog.i", files)
+            self.assertNotIn("p.bin", files)
+            runner.verify_files(root, files)
+            (root / "packages/unrequested.bin").write_bytes(b"unexpected")
+            with self.assertRaisesRegex(ValueError, "external package"):
+                runner.verify_files(root, files)
+
+    def test_embedded_bootstrap_external_output_stages_verified_named_package(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.external_source_directed_bundle(root)
+            manifest = json.loads((root / "manifest.json").read_text())
+            runtime = manifest["runtime_package_file"]
+            package = (root / runtime).read_bytes()
+            filename = Path(runtime).name
+            (root / filename).write_bytes(package)
+            bootstrap = b"embedded bootstrap:" + package
+            (root / "opforge").write_bytes(bootstrap)
+            manifest.update({"bootstrap_package_storage": "embedded", "embedded_packages": [filename],
+                             "runtime_package_file": filename, "bootstrap_hunk_digest": runner.fnv(bootstrap)})
+            (root / "manifest.json").write_text(json.dumps(manifest))
+            _, files, oracle, _ = runner.load_bundle(root)
+            self.assertNotEqual(files["opforge"], oracle)
+            self.assertEqual(files[runtime], package)
+            self.assertNotIn(filename, files)
+            (root / runtime).write_bytes(b"different named output package")
+            with self.assertRaisesRegex(ValueError, "Named output runtime package"):
+                runner.load_bundle(root)
+
+    def test_external_source_directed_rejects_wrong_package_target_and_path(self):
+        for filename, target in (("packages/other.bin", b"m68020--motorola68k"),
+                                 ("packages/m68020--motorola68k.bin", b"m6502--classic")):
+            with self.subTest(filename=filename, target=target), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.external_source_directed_bundle(root)
+                manifest = json.loads((root / "manifest.json").read_text())
+                package = self.package(target)
+                (root / filename).write_bytes(package)
+                manifest.update({"runtime_package_file": filename, "runtime_package_digest": runner.fnv(package)})
+                (root / "manifest.json").write_text(json.dumps(manifest))
+                with self.assertRaisesRegex(ValueError, "named m68020 runtime"):
+                    runner.load_bundle(root)
+
+    def test_external_source_directed_rejects_modified_source_or_runtime_bytes(self):
+        for relative in ("src/main.asm", "src/packages/catalog.i", "packages/m68020--motorola68k.bin"):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.external_source_directed_bundle(root)
+                path = root / relative
+                path.write_bytes(path.read_bytes() + b"changed")
+                with self.assertRaisesRegex(ValueError, "source changed|package mismatch"):
+                    runner.load_bundle(root)
+
     def embedded_bundle(self, root):
         self.bundle(root, False)
         target = b"m68020--motorola68k"

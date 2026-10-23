@@ -379,6 +379,10 @@ mod tests {
     #[test]
     fn cli_selection_replaces_config_defaults() {
         assert_eq!(
+            select_embeds(None, &[], false, false).unwrap(),
+            EmbedSelection::ExternalOnly
+        );
+        assert_eq!(
             select_embeds(
                 Some(r#"{"embed":["missing"]}"#),
                 &["chosen".into()],

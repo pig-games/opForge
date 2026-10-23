@@ -94,11 +94,12 @@ def inspect_result(root, files, oracle, marker, host_seconds, *,
 
 def load_bundle(path):
     manifest, files, oracle, digest = base.load_bundle(path)
-    if (manifest.get("bootstrap_defines") or manifest.get("bootstrap_package_storage") != "embedded"
-            or manifest.get("output_package_storage") != "embedded"
+    if (manifest.get("bootstrap_defines")
+            or manifest.get("bootstrap_package_storage") not in ("external", "embedded")
+            or manifest.get("output_package_storage") not in ("external", "embedded")
             or manifest.get("native_output_file") != "build/opforge"
             or manifest.get("capture_mode") != "disk"):
-        raise ValueError("Incremental pair requires a release embedded source-directed m68020 disk-capture bundle")
+        raise ValueError("Incremental pair requires a release source-directed m68020 disk-capture bundle")
     digest = hashlib.sha256((PAIR_PROTOCOL + "\0" + digest).encode()).hexdigest()
     return manifest, files, oracle, digest
 

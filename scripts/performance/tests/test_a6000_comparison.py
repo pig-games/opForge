@@ -73,6 +73,27 @@ class FixedWorkloadComparisonTests(unittest.TestCase):
                          "source_bytes": sum(row["bytes"] for row in manifest["source_mapping"])})
         self.save_manifest(bundle, manifest)
 
+    def test_external_named_runtime_remains_in_both_frozen_workload_cases(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            baseline, candidate = root / "baseline", root / "candidate"
+            fixture = fixtures.HardwareCompletionTests("runTest")
+            for bundle in (baseline, candidate):
+                bundle.mkdir()
+                fixture.external_source_directed_bundle(bundle)
+                manifest = json.loads((bundle / "manifest.json").read_text())
+                manifest.update(kind="compact-self-host-local-export", manifest_version=1)
+                self.save_manifest(bundle, manifest)
+                self.refresh_sources(bundle)
+            self.replace_image(candidate, b"candidate external executable")
+            manifest, _, cases = comparison.load_comparison(baseline, candidate, baseline / "original")
+            runtime = manifest["runtime_package_file"]
+            expected = (baseline / runtime).read_bytes()
+            for files, _, _ in cases:
+                self.assertEqual(files[runtime], expected)
+                self.assertNotIn("p.bin", files)
+                self.assertIn("src/packages/catalog.i", files)
+
     def test_both_cases_share_exact_inputs_and_oracle_but_identify_actual_bootstrap(self):
         with tempfile.TemporaryDirectory() as directory:
             baseline, candidate, frozen = self.exports(Path(directory))

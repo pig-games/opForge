@@ -1,7 +1,7 @@
 //! Portable export for a physical Amiga self-host run, with optional FS-UAE proof.
 //! OPFORGE_COMPACT_EXPORT_DIR=/absolute/new/bundle cargo test -p asm
 //! export_compact_self_host_bundle -- --ignored --nocapture --test-threads=1
-//! The default embeds 68020 and uses source-directed disk capture. Set
+//! The default loads the named 68020 package from disk. Embedding is opt-in. Set
 //! OPFORGE_COMPACT_EXPORT_NATIVE=1 for fresh full native qualification.
 use super::*;
 use crate::fs_uae_smoke::{
@@ -15,6 +15,36 @@ use registry::registry::ModuleRegistry;
 use vm::runtime_model_core::RuntimeModelCore;
 
 const ENTRY: &str = "main.asm";
+
+// Output embedding also supplies the bootstrap package. A bootstrap-only embed
+// remains an explicit reference configuration; neither option is a default.
+fn export_package_selection(
+    bootstrap: Option<&str>,
+    output: Option<&str>,
+) -> Result<(bool, bool), &'static str> {
+    let selected = |value| match value {
+        None => Ok(false),
+        Some("68020") => Ok(true),
+        Some(_) => Err("unsupported embedded self-host target"),
+    };
+    let output = selected(output)?;
+    Ok((selected(bootstrap)? || output, output))
+}
+
+#[test]
+fn self_host_packages_default_to_disk_with_explicit_embedding() {
+    assert_eq!(export_package_selection(None, None), Ok((false, false)));
+    assert_eq!(
+        export_package_selection(Some("68020"), None),
+        Ok((true, false))
+    );
+    assert_eq!(
+        export_package_selection(None, Some("68020")),
+        Ok((true, true))
+    );
+    assert!(export_package_selection(Some("other"), None).is_err());
+    assert!(export_package_selection(None, Some("other")).is_err());
+}
 const INSTRUMENTED_DEFINES: &[&str] = &[
     "OPFORGE_DEBUG_CONTRACTS",
     "OPFORGE_MEMORY_TELEMETRY",
@@ -118,16 +148,15 @@ fn export_bundle(failure_capture: bool) {
     let dependencies = scratch.join("dependencies.d");
     let instrumented = std::env::var("OPFORGE_COMPACT_EXPORT_INSTRUMENTED").as_deref() == Ok("1");
     let selection = |name| match std::env::var(name) {
-        Err(std::env::VarError::NotPresent) => false,
-        Ok(value) if value == "68020" => true,
-        _ => panic!("{name} currently accepts only 68020"),
+        Err(std::env::VarError::NotPresent) => None,
+        Ok(value) => Some(value),
+        Err(error) => panic!("invalid {name}: {error}"),
     };
-    let output_embedded = if std::env::var_os("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED").is_some() {
-        selection("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED")
-    } else {
-        std::env::var_os("OPFORGE_COMPACT_EXPORT_EMBED").is_none()
-    };
-    let embedded = selection("OPFORGE_COMPACT_EXPORT_EMBED") || output_embedded;
+    let (embedded, output_embedded) = export_package_selection(
+        selection("OPFORGE_COMPACT_EXPORT_EMBED").as_deref(),
+        selection("OPFORGE_COMPACT_EXPORT_OUTPUT_EMBED").as_deref(),
+    )
+    .expect("self-host embed selections currently accept only 68020");
     let package_build = embedded.then(|| {
         use crate::native_package_build::{build_native_packages, EmbedSelection};
         let registry = engine::build_default_asm_registry();
@@ -375,22 +404,12 @@ fn export_bundle(failure_capture: bool) {
     }
     let module_roots = ["src"];
     let entry = Path::new(ENTRY);
-    let package_file = embedded_files.first().map_or("p.bin", String::as_str);
-    let native_output_file = if output_embedded {
-        "build/opforge"
-    } else {
-        "output.hunk"
-    };
-    let mut command = if output_embedded {
-        format!("opforge -i src/{}", entry.display())
-    } else if embedded {
-        format!("opforge -i src/{} --hunk output.hunk", entry.display())
-    } else {
-        format!(
-            "opforge --runtime-package p.bin -i src/{} --hunk output.hunk",
-            entry.display()
-        )
-    };
+    let package_file = embedded_files
+        .first()
+        .map(String::as_str)
+        .unwrap_or("packages/m68020--motorola68k.bin");
+    let native_output_file = "build/opforge";
+    let mut command = format!("opforge -i src/{}", entry.display());
     command.push_str(" -M src -I src/debug --capture-dir scratch");
     assert!(
         command.len() <= 255,
@@ -497,7 +516,16 @@ fn export_bundle(failure_capture: bool) {
     );
     fs::write(output.join("opforge"), &bootstrap).unwrap();
     fs::write(output.join("oracle.hunk"), &oracle).unwrap();
-    fs::write(output.join(package_file), &package).unwrap();
+    let package_path = output.join(package_file);
+    fs::create_dir_all(package_path.parent().unwrap()).unwrap();
+    fs::write(package_path, &package).unwrap();
+    if embedded && !output_embedded {
+        // The reference bootstrap embeds its target, while its newly built
+        // executable uses normal on-disk package discovery after deployment.
+        let external = output.join("packages/m68020--motorola68k.bin");
+        fs::create_dir_all(external.parent().unwrap()).unwrap();
+        fs::write(external, &package).unwrap();
+    }
     fs::write(output.join("command.txt"), format!("{command}\n")).unwrap();
     fs::write(
         output.join("manifest.json"),
@@ -506,7 +534,7 @@ fn export_bundle(failure_capture: bool) {
     .unwrap();
     fs::write(
         output.join("README.txt"),
-        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare the manifest native_output_file exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nAn embedded bootstrap uses the entry source's .cpu 68020 selection; its named\nverification package is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
+        "Local self-host export. Consult manifest.json for validation status.\nRun command.txt from this directory on AmigaOS. Set an executable protection\nbit on opforge after transfer if needed. Time the whole command externally.\nRequire exit 0 and compare the manifest native_output_file exactly with the release oracle.hunk.\nThe manifest records bootstrap instrumentation and both package-storage choices.\nThe default bootstrap loads packages/m68020--motorola68k.bin through the\nsource .cpu 68020 selection and its catalog. Keep packages beside opforge.\nAn embedded bootstrap uses the same source selection; its named verification\npackage is retained locally and is not a runtime fallback. Embedded-\noutput cases also stage that package under src/packages as a binary\nassembly input. An instrumented bootstrap writes memory.bin in its current directory.\nNative source bytes are unchanged except the explicitly recorded configured entry\ninclude. Generated origins are recorded in manifest.json. Catalog paths are relative; filenames are preserved.\nFNV digests identify inputs; exact artifact bytes remain the parity authority.\n",
     )
     .unwrap();
     if std::env::var("OPFORGE_COMPACT_EXPORT_NATIVE").as_deref() == Ok("1") {
@@ -517,8 +545,8 @@ fn export_bundle(failure_capture: bool) {
             .map(|(_, staged, bytes, _)| (format!("src/{}", staged.display()), bytes))
             .collect::<Vec<_>>();
         guest_files.push(("scratch/.keep".into(), &scratch_marker));
-        if !embedded {
-            guest_files.push(("p.bin".into(), &package));
+        if !output_embedded {
+            guest_files.push(("packages/m68020--motorola68k.bin".into(), &package));
         }
         let files = guest_files
             .iter()
@@ -539,14 +567,10 @@ fn export_bundle(failure_capture: bool) {
         // The runner stages its launcher at the product output path. Remove it
         // after copying so only a freshly written assembly can satisfy proof.
         let assembly_command = command.strip_prefix("opforge ").unwrap();
-        let native_command = if output_embedded {
-            format!(
-                "--version\nCopy Work:build/opforge Work:selfhost_bootstrap\n\
-                 Delete Work:build/opforge\nWork:selfhost_bootstrap {assembly_command}"
-            )
-        } else {
-            assembly_command.to_owned()
-        };
+        let native_command = format!(
+            "--version\nCopy Work:build/opforge Work:selfhost_bootstrap\n\
+             Delete Work:build/opforge\nWork:selfhost_bootstrap {assembly_command}"
+        );
         let case = OpforgeNativeCliParityCase {
             name: "compact-configured-self-host",
             cpu_override: "68020",

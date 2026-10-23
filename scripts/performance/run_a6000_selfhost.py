@@ -209,7 +209,7 @@ def load_bundle(bundle):
     bootstrap = (bundle / "opforge").read_bytes()
     package_file = manifest.get("runtime_package_file", "p.bin")
     if not isinstance(package_file, str) or not (
-        re.fullmatch(r"[A-Za-z0-9_-]+\.bin", package_file) or package_file == "p.bin"
+        re.fullmatch(r"(?:packages/)?[A-Za-z0-9_-]+\.bin", package_file)
     ):
         raise ValueError("Unsafe runtime package filename")
     package = (bundle / package_file).read_bytes()
@@ -324,7 +324,7 @@ def load_bundle(bundle):
         if bootstrap.count(package) != 1:
             raise ValueError("Embedded bootstrap must contain the exact package once")
     else:
-        files["p.bin"] = package
+        files[package_file] = package
     if output_storage == "embedded":
         if output_packages != [package_file] or set(origins) != {
             "configured_entry", "generated_catalog", "package_asset"
@@ -362,41 +362,58 @@ def load_bundle(bundle):
     manifest["capture_mode"] = capture_mode
     native_output_file = checked_native_output_file(
         manifest.get("native_output_file", "output.hunk"))
-    if storage == "embedded":
+    source_directed_output = (
+        validated_command == "opforge -i src/main.asm -M src -I src/debug"
+    )
+    if source_directed_output:
+        entry_path = "src/main.asm"
+        entry = files.get(entry_path)
+        if (native_output_file != "build/opforge"
+                or manifest.get("entry") != entry_path or entry is None
+                or not has_m68020_entry_preamble(entry)):
+            raise ValueError("Source-directed output requires the mapped m68020 entry and explicit build output")
+        if output_storage == "embedded":
+            if storage != "embedded" or origins.get("configured_entry", (None, None))[0] != "main.asm":
+                raise ValueError("Source-directed embedded output requires its configured entry")
+        else:
+            if origins or b'.include "packages/catalog.i"' not in entry:
+                raise ValueError("Source-directed external output requires the unchanged native entry and catalog")
+            catalog = files.get("src/packages/catalog.i")
+            if catalog is None or re.search(rb"(?im)^\s*\.incbin\b", catalog):
+                raise ValueError("Source-directed external output requires the native external package catalog")
+            if storage == "embedded":
+                named_asset = "packages/" + package_file
+                if (bundle / named_asset).read_bytes() != package:
+                    raise ValueError("Named output runtime package differs from the verified bootstrap package")
+                files[named_asset] = package
+        if storage == "external":
+            offset = int.from_bytes(package[124:128], "big")
+            size = int.from_bytes(package[128:130], "big")
+            target = b"m68020--motorola68k"
+            if (package_file != "packages/m68020--motorola68k.bin"
+                    or offset < PACKAGE_HEADER_BYTES or size != len(target)
+                    or offset + size > runtime_bytes or package[offset:offset + size] != target):
+                raise ValueError("Source-directed external self-host requires the named m68020 runtime package")
+    elif storage == "embedded":
         search_options = r"(?: -(?:M|I) src(?:/[A-Za-z0-9_./-]+)?)*"
         command_tail = r"-i (src/[A-Za-z0-9_./-]+) --hunk output\.hunk" + search_options
         explicit_cpu = re.fullmatch(r"opforge --cpu 68020 " + command_tail, validated_command)
         source_cpu = re.fullmatch(r"opforge " + command_tail, validated_command)
-        source_directed_output = (
-            validated_command ==
-            "opforge -i src/main.asm -M src -I src/debug"
-        )
-        if source_directed_output:
-            entry_path = "src/main.asm"
-            entry = files.get(entry_path)
-            if (native_output_file != "build/opforge"
-                    or output_storage != "embedded"
-                    or manifest.get("entry") != entry_path
-                    or entry is None
-                    or origins.get("configured_entry", (None, None))[0]
-                    != "main.asm"
-                    or not has_m68020_entry_preamble(entry)):
-                raise ValueError(
-                    "Source-directed output requires the mapped m68020 embedded entry and explicit build output"
-                )
-        elif not explicit_cpu and not source_cpu:
+        if not explicit_cpu and not source_cpu:
             raise ValueError("Embedded test cannot override package selection or search")
-        elif source_cpu:
+        if source_cpu:
             entry_path = source_cpu.group(1)
             entry = files.get(entry_path)
             if (manifest.get("entry") != entry_path or entry is None
                     or not has_m68020_entry_preamble(entry)):
                 raise ValueError("Source-selected embedded test requires the mapped m68020 entry preamble")
-        if not source_directed_output and native_output_file != "output.hunk":
+        if native_output_file != "output.hunk":
             raise ValueError("Build output is allowed only for the mapped source-directed self-host command")
     elif (not validated_command.startswith("opforge --runtime-package p.bin -i ")
-          or native_output_file != "output.hunk"):
+          or package_file != "p.bin" or native_output_file != "output.hunk"):
         raise ValueError("External-package test requires the named runtime package and Hunk output")
+    if package_file.startswith("packages/"):
+        identity.extend(b"\0runtime-package-path\0" + package_file.encode() + b"\0")
     identity.extend(b"m68020\0" + command.encode() + b"\0" + package + b"\0" + oracle)
     identity.extend(b"\0output-package-storage\0" + output_storage.encode() + b"\0")
     if native_output_file != "output.hunk":
@@ -441,10 +458,17 @@ def verify_files(root, files):
         path = root / name
         if not path.is_file() or path.read_bytes() != data:
             raise ValueError(f"Remote copy differs or is missing: {name}")
-    if "opforge" in files and "p.bin" not in files:
-        for name in ("p.bin", "packages"):
-            if (root / name).exists():
-                raise ValueError(f"Embedded test must not have an external package: {name}")
+    if "opforge" in files:
+        if "p.bin" not in files and (root / "p.bin").exists():
+            raise ValueError("Unexpected external package: p.bin")
+        package_root = root / "packages"
+        expected_packages = {name for name in files if name.startswith("packages/")}
+        if package_root.exists():
+            if not expected_packages or not package_root.is_dir():
+                raise ValueError("Unexpected external package: packages")
+            for path in package_root.rglob("*"):
+                if path.is_file() and path.relative_to(root).as_posix() not in expected_packages:
+                    raise ValueError(f"Unexpected external package: {path.relative_to(root)}")
 
 
 def verify_fresh_directory(root, native_output_file="output.hunk"):

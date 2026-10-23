@@ -16,12 +16,15 @@ runner = hotspots.runner
 
 
 class A6000HotspotTests(unittest.TestCase):
-    def exports(self, root):
+    def exports(self, root, external=False):
         bundles = [root / name for name in ("baseline", "profile128", "profile256")]
         instrumented = fixtures.HardwareCompletionTests("runTest")
         for i, bundle in enumerate(bundles):
             bundle.mkdir()
-            instrumented.embedded_output_bundle(bundle)
+            if external:
+                instrumented.external_source_directed_bundle(bundle)
+            else:
+                instrumented.embedded_output_bundle(bundle)
             manifest = json.loads((bundle / "manifest.json").read_text())
             package_file = manifest["runtime_package_file"]
             package = (bundle / package_file).read_bytes()
@@ -42,6 +45,15 @@ class A6000HotspotTests(unittest.TestCase):
                              "cpu": "m68020"})
             (bundle / "manifest.json").write_text(json.dumps(manifest))
         return bundles
+
+    def test_external_runtime_package_is_kept_for_each_hotspot_profile(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundles = self.exports(Path(directory), external=True)
+            manifest, cases = hotspots.load_hotspot_cases(bundles[0], bundles[1:])
+            runtime = manifest["runtime_package_file"]
+            self.assertEqual(runtime, "packages/m68020--motorola68k.bin")
+            for case in cases:
+                self.assertEqual(case[2][runtime], (bundles[0] / runtime).read_bytes())
 
     def test_rejects_changed_nonbootstrap_bytes_before_running(self):
         with tempfile.TemporaryDirectory() as directory:

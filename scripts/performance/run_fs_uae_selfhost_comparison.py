@@ -68,8 +68,6 @@ def reproducibility_metadata(args):
 def prepare_cases(args):
     manifest, oracle, release_cases = comparison.load_comparison(
         args.baseline_bundle, args.candidate_bundle, args.baseline_source_root)
-    if manifest.get("bootstrap_package_storage") != "embedded":
-        raise ValueError("Full FS-UAE comparison currently requires embedded bootstraps")
     memory_cases = comparison.load_memory_cases(
         args.baseline_bundle, args.candidate_bundle, args.baseline_memory_bundle,
         args.candidate_memory_bundle, release_cases[0][2]["workload_sha256"])
@@ -89,7 +87,15 @@ def prepare_cases(args):
     for index, (role, own_manifest, files, own_oracle, digest, metadata) in enumerate(cases):
         directory = args.output / f"{index + 1}-{role}"
         directory.mkdir()
-        source_files = {name: data for name, data in files.items() if name.startswith("src/")}
+        runtime_path = own_manifest.get("runtime_package_file")
+        needs_external = (own_manifest.get("bootstrap_package_storage") == "external"
+                          or own_manifest.get("output_package_storage") == "external")
+        if needs_external:
+            runtime_path = "packages/m68020--motorola68k.bin"
+            if runtime_path not in files:
+                raise ValueError("Full FS-UAE comparison requires its named external runtime package")
+        source_files = {name: data for name, data in files.items()
+                        if name.startswith("src/") or (needs_external and name == runtime_path)}
         if "src/main.asm" not in source_files:
             raise ValueError("Full workload requires the mapped compact CLI entry")
         spec = {"schema": 1, "case_sha256": digest, "metadata": metadata,

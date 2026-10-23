@@ -150,11 +150,14 @@ Embedding documentation:
   package-backed VM, CLI, output, platform and debug code live under
   `native/motorola68000/amigaos/`. The root entry defaults to `.cpu 68020`, uses
   an external-only package catalog, and writes the Hunk executable to
-  `build/opforge`. Build a deployment bundle with the
+  `build/opforge`. Disk-loaded target packages are the default deployment mode;
+  the package builder places `opforge` beside its sibling `packages/` directory.
+  Build a deployment bundle with the
   [`build_native_packages` example](crates/opforge-asm/examples/build_native_packages.rs);
-  non-embedded target packages ship under `packages/`. The Rust CLI remains unchanged. Native language and
-  CPU-family parity work is ongoing; see the [completion status](documentation/plans/native-runtime-reset.md)
-  and [native build and run guide](native/README.md).
+  pass `--embed m68020` only when an embedded m68020 package is desired. The Rust
+  CLI remains unchanged. Native language and CPU-family parity work is ongoing;
+  see the [completion status](documentation/plans/native-runtime-reset.md) and
+  [native build and run guide](native/README.md).
 
 ## Development Shortcuts
 

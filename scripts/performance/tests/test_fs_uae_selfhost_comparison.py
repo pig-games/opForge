@@ -83,6 +83,30 @@ class FullComparisonTests(unittest.TestCase):
                 self.assertEqual((path.parent / "inputs/src/main.asm").read_bytes(), b"old source")
             self.assertEqual((cases[4].parent / "inputs/src/main.asm").read_bytes(), b"new source")
 
+    def test_external_runtime_package_is_staged_with_frozen_and_current_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = argparse.Namespace(output=root / "cases", baseline_bundle=root / "baseline",
+                                      candidate_bundle=root / "candidate", baseline_source_root=root / "source",
+                                      baseline_memory_bundle=None, candidate_memory_bundle=None)
+            runtime = "packages/m68020--motorola68k.bin"
+            manifest = {"bootstrap_package_storage": "external", "output_package_storage": "external",
+                        "runtime_package_file": runtime, "bootstrap_defines": []}
+            frozen = {"src/main.asm": b"frozen", "opforge": b"old", runtime: b"verified package"}
+            current = {"src/main.asm": b"current", "opforge": b"new", runtime: b"verified package"}
+            releases = [(frozen, "baseline", {"comparison_role": "baseline", "workload_sha256": "workload"})]
+            with (mock.patch.object(module.comparison, "load_comparison", return_value=(manifest, b"old", releases)),
+                  mock.patch.object(module.comparison, "load_memory_cases", return_value=[]),
+                  mock.patch.object(module.runner, "load_bundle", return_value=(manifest, current, b"new", "current"))):
+                cases = module.prepare_cases(args)
+            self.assertEqual(len(cases), 2)
+            for path in cases:
+                spec = json.loads(path.read_text())
+                package = next(row for row in spec["files"] if row["guest_path"] == runtime)
+                self.assertEqual((path.parent / package["path"]).read_bytes(), b"verified package")
+                self.assertEqual(package["digest"], module.runner.fnv(b"verified package"))
+                self.assertEqual(spec["native_output_file"], "build/opforge")
+
     def test_failed_case_does_not_prevent_later_case_execution(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -24,8 +24,6 @@ def load_hotspot_cases(baseline, profiles):
             or base.get("manifest_version") != 1 or base_defines != required
             or base_defines & runner.DENSE_TELEMETRY_DEFINES):
         raise ValueError("Baseline must be a light MEMD+CAPTURE bootstrap without HOTSPOT or dense telemetry")
-    if base.get("bootstrap_package_storage", "external") != "embedded":
-        raise ValueError("A6000 hotspot workload requires the embedded 68020 package")
     if any(m.get("kind") != "compact-self-host-local-export" or m.get("manifest_version") != 1
            for m in manifests):
         raise ValueError("Require genuine compact self-host exports")

@@ -100,6 +100,16 @@ class IncrementalPairTests(unittest.TestCase):
         script = next((self.root / "prepared").glob("*/run-selfhost")).read_text()
         self.assertIn(pair.PAIR_PROTOCOL, script)
 
+    def test_accepts_external_release_pair_without_embedding(self):
+        manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "external",
+                    "output_package_storage": "external", "native_output_file": "build/opforge",
+                    "capture_mode": "disk", "runtime_package_file": "packages/m68020--motorola68k.bin"}
+        files = {"packages/m68020--motorola68k.bin": b"verified"}
+        with mock.patch.object(pair.base, "load_bundle", return_value=(manifest, files, b"oracle", "digest")):
+            loaded, transferred, _, _ = pair.load_bundle(self.root)
+        self.assertEqual(loaded, manifest)
+        self.assertEqual(transferred, files)
+
     def test_rejects_resident_capture_bundle(self):
         manifest = {"bootstrap_defines": [], "bootstrap_package_storage": "embedded",
                     "output_package_storage": "embedded", "native_output_file": "build/opforge",

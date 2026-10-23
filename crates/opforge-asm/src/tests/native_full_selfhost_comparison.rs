@@ -200,8 +200,8 @@ fn full_selfhost_comparison(budget_failure_diagnostic: bool) {
         .map(|row| {
             let name = row["guest_path"].as_str().unwrap().to_owned();
             assert!(
-                name.starts_with("src/"),
-                "only source workload files expected"
+                name.starts_with("src/") || name.starts_with("packages/"),
+                "only source workload and runtime package files expected"
             );
             (name, checked_file(directory, row))
         })

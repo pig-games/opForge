@@ -173,7 +173,7 @@ fn binary_selection_self_host_immediate_indirect_oracle_and_package() {
         .position(|name| name == "cmpi")
         .unwrap() as u16;
     assert!((0..count).any(|index| {
-        let row = rows + index * crate::binary_source_experiment::ROW;
+        let row = rows + index * crate::native_runtime_package::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == cmpi
             && bytes[row + 2] == 1
             && bytes[row + 3] == 8 // immediate_direct, matching the indirect oracle
@@ -241,7 +241,7 @@ fn binary_selection_repeated_forward_call_rust_oracle() {
     }
     assert_eq!(binding, Some((bsr, 3)));
     assert!((0..count).any(|index| {
-        let row = rows + index * crate::binary_source_experiment::ROW;
+        let row = rows + index * crate::native_runtime_package::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == bsr
             && bytes[row + 2] == 3
             && bytes[row + 3] == 1
@@ -281,7 +281,7 @@ fn binary_selection_displacement_package_recipe() {
     let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
     let jsr = package.names.iter().position(|name| name == "jsr").unwrap() as u16;
     assert!((0..count).any(|index| {
-        let row = rows + index * crate::binary_source_experiment::ROW;
+        let row = rows + index * crate::native_runtime_package::ROW;
         u16::from_be_bytes(bytes[row..row + 2].try_into().unwrap()) == jsr
             && bytes[row + 3] == 1
             && bytes[row + 5] == 9
@@ -402,10 +402,10 @@ fn binary_selection_distinguishes_register_and_direct_shapes() {
     let count = u32::from_be_bytes(bytes[20..24].try_into().unwrap()) as usize;
     let serialized = (0..count)
         .map(|index| {
-            &bytes[rows + index * crate::binary_source_experiment::ROW
+            &bytes[rows + index * crate::native_runtime_package::ROW
                 ..rows
-                    + index * crate::binary_source_experiment::ROW
-                    + crate::binary_source_experiment::ROW]
+                    + index * crate::native_runtime_package::ROW
+                    + crate::native_runtime_package::ROW]
         })
         .collect::<Vec<_>>();
     for (mnemonic, qualifier, shape, priority, expected_shape) in [

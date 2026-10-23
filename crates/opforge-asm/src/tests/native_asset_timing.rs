@@ -12,7 +12,7 @@ fn inputs() -> (Vec<u8>, Vec<u8>) {
     let core =
         vm::runtime_model_core::RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
     let asset = (0..package.len())
         .map(|index| alphabet[index % alphabet.len()])

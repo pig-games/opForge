@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-//! Provisional host builder for the native compact package catalog.
+//! Host tooling for native runtime package files, catalogs and embedding configuration.
 use registry::ModuleRegistry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -299,7 +299,7 @@ pub fn build_native_packages(
         let resolved = core
             .resolve_pipeline(&target.cpu, Some(&target.dialect))
             .map_err(|e| e.to_string())?;
-        packages.push(crate::binary_source_experiment::prepare_package(
+        packages.push(crate::native_runtime_package::prepare_package(
             &core, &resolved,
         )?);
     }

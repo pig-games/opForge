@@ -18,9 +18,9 @@ pub(super) fn batch() -> (Vec<u8>, Vec<u8>) {
     let registry = engine::build_default_asm_registry();
     let core = RuntimeModelCore::from_registry(&registry).unwrap();
     let resolved = core.resolve_pipeline("68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let offset = u32::from_be_bytes(
-        package[crate::binary_source_experiment::STATEMENT_HEAD..][..4]
+        package[crate::native_runtime_package::STATEMENT_HEAD..][..4]
             .try_into()
             .unwrap(),
     ) as usize;

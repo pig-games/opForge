@@ -132,7 +132,7 @@ fn compact_state_false_guard_policy_host_contract() {
             |offset| u32::from_be_bytes(wire[offset..offset + 4].try_into().unwrap()) as usize;
         let word = |offset| u16::from_be_bytes(wire[offset..offset + 2].try_into().unwrap());
         let rows = (0..long(20))
-            .map(|index| long(16) + index * crate::binary_source_experiment::ROW)
+            .map(|index| long(16) + index * crate::native_runtime_package::ROW)
             .filter(|row| word(*row) == guarded.mnemonic)
             .collect::<Vec<_>>();
         assert_eq!(rows.len(), if fallback { 2 } else { 1 });

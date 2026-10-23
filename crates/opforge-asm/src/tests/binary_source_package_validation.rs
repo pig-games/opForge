@@ -34,13 +34,13 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     assert!(count > 0);
     assert_eq!(&valid[..4], b"BS38");
-    assert!(rows + count * crate::binary_source_experiment::ROW <= valid.len());
+    assert!(rows + count * crate::native_runtime_package::ROW <= valid.len());
     assert_eq!(&valid[rows + 34..rows + 36], &[0, 0]);
     assert!(valid[rows + 32] <= 11);
     let mut invalid_ds = valid.clone();
     let name_count = u16::from_be_bytes(valid[62..64].try_into().unwrap());
-    invalid_ds[crate::binary_source_experiment::DS_DIRECTIVE
-        ..crate::binary_source_experiment::DS_DIRECTIVE + 2]
+    invalid_ds[crate::native_runtime_package::DS_DIRECTIVE
+        ..crate::native_runtime_package::DS_DIRECTIVE + 2]
         .copy_from_slice(&name_count.to_be_bytes());
     let mut reserved = valid.clone();
     reserved[rows + 35] = 1;
@@ -53,7 +53,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
         ("invalid-third-form", form, 1),
     ];
     let role_row = (0..count)
-        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .map(|index| rows + index * crate::native_runtime_package::ROW)
         .find(|row| u16::from_be_bytes(valid[row + 36..row + 38].try_into().unwrap()) != 0)
         .expect("generated package includes independent operand roles");
     let mut role_reserved = valid.clone();
@@ -177,7 +177,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     let mut superseded = valid.clone();
     superseded[..4].copy_from_slice(b"BS37");
     cases.push(("superseded-package", superseded, 1));
-    use crate::binary_source_experiment::{STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH};
+    use crate::native_runtime_package::{STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH};
     for (field, names) in [
         (
             STATEMENT_COMPILE,
@@ -215,7 +215,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
             (
                 names[0],
                 field,
-                crate::binary_source_experiment::HEADER as u32,
+                crate::native_runtime_package::HEADER as u32,
             ),
             (names[1], field, program | 1),
             (names[2], field + 4, 0),
@@ -244,7 +244,7 @@ fn fixtures() -> Vec<(&'static str, Vec<u8>, u32)> {
     }
     cases.push((
         "truncated-current-header",
-        valid[..crate::binary_source_experiment::HEADER - 1].to_vec(),
+        valid[..crate::native_runtime_package::HEADER - 1].to_vec(),
         1,
     ));
     cases
@@ -396,7 +396,7 @@ fn compact_package_validation_component_fixture_contract() {
     let rows = u32::from_be_bytes(valid[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(valid[20..24].try_into().unwrap()) as usize;
     let role_row = (0..count)
-        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .map(|index| rows + index * crate::native_runtime_package::ROW)
         .find(|row| u16::from_be_bytes(valid[row + 36..row + 38].try_into().unwrap()) != 0)
         .unwrap();
     let loop_offset = u32::from_be_bytes(valid[212..216].try_into().unwrap()) as usize;
@@ -469,12 +469,12 @@ fn compact_package_validation_component_fixture_contract() {
                     ..branch_offset + package::package::PACKED_BRANCH_PROGRAM_BYTES
             }
             "invalid-ds-directive-id" => {
-                crate::binary_source_experiment::DS_DIRECTIVE
-                    ..crate::binary_source_experiment::DS_DIRECTIVE + 2
+                crate::native_runtime_package::DS_DIRECTIVE
+                    ..crate::native_runtime_package::DS_DIRECTIVE + 2
             }
             "superseded-package" => 0..4,
             name if name.starts_with("statement-") => {
-                use crate::binary_source_experiment::{
+                use crate::native_runtime_package::{
                     STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH,
                 };
                 let field = if name.starts_with("statement-compile-") {
@@ -499,8 +499,8 @@ fn compact_package_validation_component_fixture_contract() {
                 }
             }
             "truncated-current-header" => {
-                assert_eq!(bytes.len(), crate::binary_source_experiment::HEADER - 1);
-                assert_eq!(bytes, &valid[..crate::binary_source_experiment::HEADER - 1]);
+                assert_eq!(bytes.len(), crate::native_runtime_package::HEADER - 1);
+                assert_eq!(bytes, &valid[..crate::native_runtime_package::HEADER - 1]);
                 assert!(changed.is_empty());
                 continue;
             }

@@ -1,7 +1,7 @@
 //! Typed lists execute from packed programs; Rust supplies each live oracle.
 use super::*;
-use crate::binary_source_experiment::prepare_package;
 use crate::native_package_build::{build_native_packages, EmbedSelection};
+use crate::native_runtime_package::prepare_package;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli};
 use vm::runtime_model_core::RuntimeModelCore;

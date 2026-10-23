@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //! Deferred region validation and initialized-byte provenance share no CPU rules.
 use super::*;
-use crate::binary_source_experiment::prepare_package;
 use crate::native_package_build::{build_native_packages, EmbedSelection};
+use crate::native_runtime_package::prepare_package;
 use clap::Parser;
 use cli_core::{run_with_validated_cli_with_context, validate_cli, Cli, CliRunError};
 use vm::runtime_model_core::RuntimeModelCore;

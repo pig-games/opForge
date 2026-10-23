@@ -241,7 +241,7 @@ fn prepare(dir: &Path, case: &GeometryCase) -> Fixture {
     }
     let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     fs::write(dir.join("module_geometry_source.txt"), case.source).unwrap();
     fs::write(dir.join("module_geometry_package.bin"), &package).unwrap();
     let mut rows = String::new();

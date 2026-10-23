@@ -134,7 +134,7 @@ fn prepare(dir: &Path) -> Fixture {
     }
     let core = RuntimeModelCore::from_registry(&engine::build_default_asm_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let package_digest = opforge_self_host_package_digest(&package);
     let source_digest = format!(
         "fnv1a64:{:016x}",

@@ -393,7 +393,7 @@ fn export_bundle(failure_capture: bool) {
     families::register_motorola68000_family_stack(&mut registry);
     let core = RuntimeModelCore::from_registry(&registry).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     if embedded {
         assert_eq!(
             fs::read(scratch.join("embedded/packages").join(&embedded_files[0])).unwrap(),

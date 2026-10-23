@@ -363,7 +363,7 @@ fn compact_mnemonic_member_package_projection() {
             .filter(|other| same_key(other))
             .count();
         let row = (0..count)
-            .map(|index| rows + index * crate::binary_source_experiment::ROW)
+            .map(|index| rows + index * crate::native_runtime_package::ROW)
             .filter(|&row| {
                 word(row) == candidate.mnemonic
                     && wire[row + 2] == candidate.qualifier.unwrap() + 1

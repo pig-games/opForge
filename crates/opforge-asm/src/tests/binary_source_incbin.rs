@@ -213,7 +213,7 @@ fn native(name: &str, cpu: &str, files: &[(&str, &[u8])], roots: &[&str], expect
         .unwrap();
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline(cpu, None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let outcome = crate::fs_uae_smoke::run_compact_cli_files_from_env(
         &root,
         &package,
@@ -291,7 +291,7 @@ fn binary_incbin_included_origin_diagnostic_fs_uae() {
     assert!(oracle("m68020", &files, &[], "output.bin", true).is_err());
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let result = crate::fs_uae_smoke::run_compact_cli_files_from_env(
         &workspace_root(),
         &package,
@@ -483,7 +483,7 @@ fn catalog_package() -> Vec<u8> {
     }
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap()
+    crate::native_runtime_package::prepare_package(&core, &resolved).unwrap()
 }
 
 fn catalog_oracle(payload: &[u8]) -> Vec<u8> {

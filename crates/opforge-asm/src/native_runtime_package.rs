@@ -1,5 +1,7 @@
-//! Provisional native binary-source package wire format. No source or CPU semantics
-//! are inferred here: selection metadata and executable bodies come from the package.
+//! Build BS38 runtime packages for the native assembler from the shared runtime model.
+//! Lower resolved target metadata into numeric dictionaries, candidate records and
+//! VM programs, then serialize an offset-based, big-endian package. CPU semantics
+//! come from the shared package definitions; no project source is consumed here.
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -259,7 +259,7 @@ fn package() -> Vec<u8> {
     let resolved = core
         .resolve_pipeline("m68020", None)
         .expect("68020 pipeline");
-    crate::binary_source_experiment::prepare_package(&core, &resolved)
+    crate::native_runtime_package::prepare_package(&core, &resolved)
         .expect("current 68020 package contract")
 }
 

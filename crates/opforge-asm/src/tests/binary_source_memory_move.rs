@@ -30,8 +30,8 @@ fn compact_memory_move_package_rows() {
     let mut member_barriers = 0;
     let mut sequences = 0;
     let mut pc_sequences = 0;
-    for row in wire[rows..rows + count * crate::binary_source_experiment::ROW]
-        .chunks_exact(crate::binary_source_experiment::ROW)
+    for row in wire[rows..rows + count * crate::native_runtime_package::ROW]
+        .chunks_exact(crate::native_runtime_package::ROW)
     {
         if u16::from_be_bytes(row[..2].try_into().unwrap()) != move_id
             || row[2] != qualifier

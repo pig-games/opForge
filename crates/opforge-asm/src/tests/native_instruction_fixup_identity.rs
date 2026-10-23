@@ -30,7 +30,7 @@ fn prepare(dir: &Path) -> Vec<u8> {
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
     let numeric = BinarySourcePackage::prepare(&core, &resolved).unwrap();
     let package =
-        crate::binary_source_experiment::prepare_package_with_names(&core, &resolved).unwrap();
+        crate::native_runtime_package::prepare_package_with_names(&core, &resolved).unwrap();
     let name = |text: &str| {
         package
             .names

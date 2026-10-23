@@ -630,8 +630,7 @@ fn scalar_capsule_65c02_package() -> Vec<u8> {
     let pipeline = core
         .resolve_pipeline("65c02", None)
         .expect("actual 65C02 pipeline");
-    crate::binary_source_experiment::prepare_package(&core, &pipeline)
-        .expect("current 65C02 package")
+    crate::native_runtime_package::prepare_package(&core, &pipeline).expect("current 65C02 package")
 }
 
 #[test]

@@ -19,7 +19,7 @@ fn fixture() -> (Vec<u8>, Vec<u8>) {
     let registry = engine::build_default_asm_registry();
     let core = vm::runtime_model_core::RuntimeModelCore::from_registry(&registry).unwrap();
     let resolved = core.resolve_pipeline("68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let mut cases = vec![
         ("    N7 \"1+2\"".to_owned(), 0usize, 1usize),
         ("    N0B8H \"\"".to_owned(), 0, 1),

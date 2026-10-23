@@ -91,7 +91,7 @@ fn compact_inline_register_label_fs_uae() {
     let _cleanup = Cleanup(dir.clone());
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     for colon in [false, true] {
         let source = register_label_source(colon);
         let expected = oracle(&dir, &source);

@@ -306,7 +306,7 @@ pub(super) fn batch() -> (Vec<u8>, Vec<u8>) {
     let registry = engine::build_default_asm_registry();
     let core = RuntimeModelCore::from_registry(&registry).unwrap();
     let resolved = core.resolve_pipeline("68020", None).unwrap();
-    let package = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let package = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let mut input = Vec::new();
     word(&mut input, cases.len() as u32);
     word(&mut input, package.len() as u32);

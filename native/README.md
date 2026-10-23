@@ -24,6 +24,13 @@ Directly assembling `main.asm` uses that external-only catalog and therefore
 needs the matching package files in its package root. The Rust product CLI and
 its command-line behavior are unchanged by this native promotion.
 
+Host package generation shares the Rust hierarchy/runtime model.
+[`native_runtime_package.rs`](../crates/opforge-asm/src/native_runtime_package.rs)
+lowers a selected target into the BS38 binary consumed by the native assembler;
+[`native_package_build.rs`](../crates/opforge-asm/src/native_package_build.rs)
+handles package files, catalogs and embedding configuration. Package generation
+does not consume project source and currently runs on the Rust host.
+
 Normal native builds use one module object directory, `build/ofm`, or the path
 selected by `--incremental-dir`. The linker reads the same `.ofm` files used for
 incremental reuse. Unchanged modules leave their object files untouched; stale

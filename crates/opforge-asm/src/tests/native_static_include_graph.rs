@@ -193,7 +193,7 @@ fn native_static_include_graph_fs_uae() {
         let resolved = core
             .resolve_pipeline(engine::default_cpu().as_str(), None)
             .unwrap();
-        let bytes = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+        let bytes = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
         let path = format!("packages/{}--{}.bin", resolved.cpu_id, resolved.dialect_id);
         run_with_packages(
             &root,

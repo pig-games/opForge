@@ -7,7 +7,7 @@ use vm::runtime_model_core::RuntimeModelCore;
 fn packages() -> (Vec<u8>, Vec<u8>) {
     let core = RuntimeModelCore::from_registry(&default_registry()).unwrap();
     let resolved = core.resolve_pipeline("m6502", None).unwrap();
-    let a = crate::binary_source_experiment::prepare_package(&core, &resolved).unwrap();
+    let a = crate::native_runtime_package::prepare_package(&core, &resolved).unwrap();
     let mut b = a.clone();
     let plan = u32::from_be_bytes(a[200..204].try_into().unwrap()) as usize;
     // B accepts one number only; A accepts the complete arithmetic expression.

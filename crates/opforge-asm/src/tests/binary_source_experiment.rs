@@ -4,9 +4,9 @@
 mod text_recipe_semantics;
 
 use super::*;
-use crate::binary_source_experiment::prepare_package;
+use crate::native_runtime_package::prepare_package;
 
-const PACKAGE_HEADER_BYTES: usize = crate::binary_source_experiment::HEADER;
+const PACKAGE_HEADER_BYTES: usize = crate::native_runtime_package::HEADER;
 const BRANCH_PLAN_OFFSET: usize = 220;
 const BRANCH_PLAN_BYTES_OFFSET: usize = 224;
 const TEXT_PLAN_OFFSET: usize = 228;
@@ -140,7 +140,7 @@ fn binary_source_runtime_target_identity_is_relocatable() {
         let runtime_bytes = long(72);
         let expected = format!("{cpu}--{}", resolved.dialect_id);
         assert_eq!(&bytes[..4], b"BS38");
-        use crate::binary_source_experiment::{STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH};
+        use crate::native_runtime_package::{STATEMENT_COMPILE, STATEMENT_HEAD, STATEMENT_MATCH};
         for (field, expected) in [
             (
                 STATEMENT_COMPILE,
@@ -400,8 +400,8 @@ fn binary_source_packages_prepare() {
             let count = long(&bytes, 20);
             for index in 0..count {
                 let guard = u16::from_be_bytes(
-                    bytes[rows + index * crate::binary_source_experiment::ROW + 30
-                        ..rows + index * crate::binary_source_experiment::ROW + 32]
+                    bytes[rows + index * crate::native_runtime_package::ROW + 30
+                        ..rows + index * crate::native_runtime_package::ROW + 32]
                         .try_into()
                         .unwrap(),
                 );
@@ -467,7 +467,7 @@ fn binary_source_packages_prepare() {
         let programs = long(&bytes, 32);
         let program_count = long(&bytes, 36);
         for (offset, count, width) in [
-            (rows, row_count, crate::binary_source_experiment::ROW),
+            (rows, row_count, crate::native_runtime_package::ROW),
             (registers, register_count, 6),
             (programs, program_count, 12),
         ] {
@@ -476,12 +476,12 @@ fn binary_source_packages_prepare() {
         }
 
         let mut runtime_references = vec![
-            (rows, row_count * crate::binary_source_experiment::ROW),
+            (rows, row_count * crate::native_runtime_package::ROW),
             (registers, register_count * 6),
             (programs, program_count * 12),
         ];
         for index in 0..row_count {
-            let row = rows + index * crate::binary_source_experiment::ROW;
+            let row = rows + index * crate::native_runtime_package::ROW;
             let input_count =
                 u16::from_be_bytes(bytes[row + 10..row + 12].try_into().unwrap()) as usize;
             let inputs = long(&bytes, row + 12);

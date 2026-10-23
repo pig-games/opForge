@@ -177,7 +177,7 @@ fn branch_wire() -> (Vec<u8>, usize) {
     let rows = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     let row = (0..count)
-        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .map(|index| rows + index * crate::native_runtime_package::ROW)
         .find(|&row| {
             u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == name
                 && wire[row + 2] == qualifier
@@ -260,7 +260,7 @@ fn compact_branch_nonbranch_identity_flag_rejection_fs_uae() {
     let rows = u32::from_be_bytes(wire[16..20].try_into().unwrap()) as usize;
     let count = u32::from_be_bytes(wire[20..24].try_into().unwrap()) as usize;
     let row = (0..count)
-        .map(|index| rows + index * crate::binary_source_experiment::ROW)
+        .map(|index| rows + index * crate::native_runtime_package::ROW)
         .find(|&row| {
             u16::from_be_bytes(wire[row..row + 2].try_into().unwrap()) == name
                 && wire[row + 2] == qualifier

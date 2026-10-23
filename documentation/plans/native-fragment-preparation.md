@@ -2,8 +2,9 @@
 
 ## `.ofm` lifecycle
 
-Eligible modules compile to inspectable current-build `.ofm` link objects.
-Candidate success persists semantic values in `OFMS` and closed templates and
+Eligible dependency modules compile to inspectable `.ofm` link objects that
+serve both current linking and validated incremental reuse. Successful publication
+persists semantic values in `OFMS` and closed templates and
 statements in `OFTM`; consumers remap numeric identities and demand only the
 needed entities. Interface-only producers create zero-payload-block objects,
 without synthetic PCs or sections. Producer-local semantic and facet owners are
@@ -21,12 +22,25 @@ final Hunk emission and caches one current module. Unlinked/BSS-only objects may
 need zero payload reads; selected payloads are read at most once. Successful
 cleanup preserves `.ofm` deliverables and retires ephemeral capture owners.
 
-Object names put the module leaf before parent qualification in a 21-byte stem;
-unsafe characters become underscores, and a four-hex-digit build-local ID avoids
-collisions within the 30-byte classic Amiga limit. With `--capture-dir DIR`, files
-use a newly owned `objects` directory, or `objects-N` if occupied. Failed writes
-remove only their owned temporary file; rollback removes only the unpublished
-suffix. Serialized containers store numeric offsets and values, never pointers.
+Normal CLI builds use one persistent `build/ofm` directory, overridden by
+`--incremental-dir`. The linker adopts validated cache hits and persisted rebuilds
+without copying them to a second object set. Unchanged objects are untouched;
+stale modules replace their existing objects. Component requests without persistent
+caching reuse a stable `objects` child under their capture parent. Numbered
+`objects-N` directories are not created. One writer per directory is required.
+
+Names use a 21-byte leaf-first stem plus bounded parent qualification, a unique
+four-hex-digit registry ID and `.ofm`, within the classic 30-byte filename limit.
+Sanitization, truncation and case-folding collisions are separated by that ID;
+full identity/configuration checks govern reuse. The matching `.ofi` records
+freshness and publication metadata; it is not linker payload.
+
+Replacement writes and closes a complete temporary object before publication.
+The old `.ofi` is invalidated before mutation and the new marker is published
+last. Rollback releases unpublished owners without deleting adopted persistent
+objects. Serialized data contains offsets and values, never process pointers.
+The [interface/cache reference](native-module-interfaces.md#incremental-storage-and-invalidation)
+owns invalidation, naming and failure details.
 
 ## Numeric-interface proofs
 
@@ -49,7 +63,7 @@ range. The Reloc row stays unchanged; package lowering owns all encoding meaning
 
 Dependency publication preserves original source order, including repeated
 targets under aliases, for resident and disk storage. Each declared edge is
-retained for ordering; the candidate path resolves stored entities on demand
+retained for ordering; the stored-interface path resolves entities on demand
 instead of snapshotting every dependency into a duplicate shared semantic table.
 The reference/fallback path keeps its established semantic snapshot behavior.
 

@@ -1,21 +1,21 @@
 # Preparation ownership and capture storage
 
 This note records maintained capture and ownership contracts for module
-compilation. Current qualification, budget, and result status lives in
+compilation. Current qualification, budget and measurement status live in
 [native runtime and memory diagnosis](native-performance-diagnosis.md).
 
 ## Storage policies
 
 | Mechanism | Contract |
 |---|---|
-| Resident capture | Default; completed captures may retire after owned publication. |
+| CLI disk capture | Default in working-directory `build/scratch`; `--capture-dir DIR` overrides it. Capture, prepared and lexical backing share the configured scratch parent. |
+| Resident capture | Reference/library route when `Frame.CaptureDirectory` is null; captures may retire after owned publication. |
 | Complete-graph replay | Disk inputs retain the same semantic engine and closed schedule. |
-| `--capture-dir DIR` | Selects disk capture, prepared backing, and lexical backing; use a real disk volume. |
 | Raw capture | Records are contiguous within backing extents; the logical arena need not be one allocation. |
 | Prepared backing | Checked module-bounded views; four 32 KiB pages cap resident payload at 128 KiB through finalization/reachability. |
 | Lexical backing | Stable numeric identities and owned reader copies; private disk scratch spills combined entry/name payload at 64 KiB and uses the prepared store's 128 KiB cache. |
-| `.ofm` objects | Current-build link objects survive successful cleanup; ephemeral capture files have separate cleanup ownership. |
-| Stored interfaces | Candidate `.ofm` objects persist `OFMS` values and `OFTM` template/statement data for bounded, on-demand numeric resolution. |
+| `.ofm` objects | Persistent `build/ofm` (or `--incremental-dir`) serves incremental reuse and final linking. Temporary captures have separate cleanup ownership. |
+| Stored interfaces | Published `.ofm` objects persist `OFMS` values and `OFTM` template/statement data for bounded, on-demand numeric resolution. |
 
 ## Configuration and suspended source execution
 
@@ -47,14 +47,14 @@ scratch files; a crash may leave private scratch for recovery.
 
 ## Publication ownership
 
-Candidate success writes `OFMS` semantic values and `OFTM` closed template and
-statement facets into the `.ofm` object, then retires producer-local semantic and
+Successful module publication writes `OFMS` semantic values and `OFTM` closed
+template and statement facets into the `.ofm` object, then retires producer-local semantic and
 facet owners. Consumers resolve stored identities on demand; they do not build a
 second shared copy of every dependency. The reference/fallback path retains its
 owned capsules and shared semantic installation. Dependency edges preserve
 source order and aliases under both resident and disk storage. See the
 numeric-interface and `.ofm` contracts in
-[per-module objects and shared capsules](native-fragment-preparation.md).
+[per-module object contracts](native-fragment-preparation.md).
 
 The stored-interface reader and capture store are separate owners. Current
 stored-interface contracts are in
@@ -67,8 +67,25 @@ page buffer; failed flush/reload preserves explicit owners and sticky I/O errors
 Names retire at the post-binding frontier; entries survive later numeric
 consumers.
 
-`materializePreparedStore` reconstructs a contiguous global ordered `Records`
-stream, then retires the prepared store and index before assembly passes. That
-`Records` allocation remains resident during assembly. The private module image
-cache is a separate owner for fragment runtime; `beginSizing` remains a no-growth
-boundary.
+The remaining shared schedule is materialized into an ordered `Records` stream
+before assembly; the prepared store and index can then retire. That `Records`
+allocation remains resident during its assembly session. This does not retain
+all published private modules as shared source records. The module image reader
+is a separate owner; `beginSizing` remains a no-growth boundary. Growing-source
+sessions require the separate [source-execution design](native-source-execution.md).
+
+## Bounds and failure ownership
+
+Payload cache limits are not total-process memory limits. Chunk directories,
+provider tables, link metadata, transient producer overlap, executable/package,
+stack and OS storage remain separate costs. `build/scratch` and `build/ofm`
+are relative to the working directory and are created as needed. Scratch should
+be on a real disk volume for memory-fit comparisons; `T:` can be RAM-backed.
+
+Several identities remain word-bounded: package names consume part of the global
+numeric ID space, graph nodes are capped at 512, and dynamically grown import
+rows retain their 16-bit index limit. Block markers admit 65,535 entries, while
+the binding-owner ambiguity sentinel reserves the last owner value. Growable
+byte arenas still validate extents, carry, aliasing and publication bounds.
+Allocation/IO failures must preserve prior owners or abort explicitly; raising
+a shared cap is not a substitute for respecting each owner's contract.

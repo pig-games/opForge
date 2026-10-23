@@ -1,972 +1,222 @@
-# Native assembler completion plan
+# Native assembler status and completion
 
 ## Current product state
 
-The maintained native AmigaOS assembler now starts at
-[`main.asm`](../../native/motorola68000/amigaos/main.asm), defaults to `.cpu 68020`,
-includes the checked-in external-only package catalog and emits `build/opforge`.
-The package builder and self-host exports default to loading packages from disk;
-embedding is an explicit option. Deploy `opforge` beside `packages/`. The builder
-can embed selected payloads and emits external target packages alongside the
-executable bundle. This
-promotion changes the product entry point; it does not claim complete Rust
-language, CPU-family or output parity. Full opcore and family parity, plus the
-2 MiB memory target, remain open.
-
-**Bare CLI self-host qualified, 2026-10-23.** The current export contains
-278 mapped inputs (2,949,110 bytes), manifest `fnv1a64:51307e75736f84bd`.
-Cold runs `opforge src --rebuild`; warm runs `opforge src`, without CPU,
-module/include-root or capture arguments. The root file supplies `.cpu` and
-`.output`; its directory is the default module/include root. Product debug
-includes resolve relative to their containing files. Normal CLI builds select
-the bounded module pipeline, creating working-directory `build/scratch` and
-persistent `build/ofm` as needed. Extra `-I` paths retain the default root.
-
-Under the established 8 MiB Workbench/plain-background setup and 64 KiB stack,
-cold takes **279 s (4m 39s)** and warm **58 s** (CLI totals 278.96/57.70 s).
-All 190 dependency modules rebuild cold and all 190 are reused warm. Both
-phases exit zero and produce the complete **348,824-byte executable** exactly
-matching live Rust and the bootstrap, digest `fnv1a64:039b39206ed8ab98`.
-Linked static reservation is 389,968 bytes; the separate m68020 package remains
-478,042 bytes. Capture scratch is empty after cleanup. These unrestricted-speed
-FS-UAE durations prove this exact configuration's completion and 8 MiB fit;
-they do not establish physical hardware timing, a new peak-heap figure, or
-2 MiB fit. The previous source snapshot took 283/59 s; no isolated speed
-improvement is claimed. The new bare-CLI bundle awaits physical A6000 testing.
-
-The preceding external-package snapshot (278 inputs / 2,947,664 bytes,
-manifest `fnv1a64:10ba03505347550b`, executable 348,752 bytes) passes the physical
-A6000 cold/warm pair reported on 2026-10-23: **1,066 s (17m 46s) cold**, **90 s (1m 30s) warm**.
-Cold rebuilds all 190 modules; warm reuses all 190 and rebuilds none. Both phases
-have fresh completed protocol, exit/copy status zero and exact entire Rust Hunk
-equality. The downloaded capture was independently rechecked against the bundle's
-input bytes, oracle and case identity
-`de108f5e4239829bdc6fcd5326bfece58602155b0bb368e8278974b0895d897c`.
-Its final tree contains only one set of 190 `.ofm` images and 190 `.ofi` companions
-under `build/ofm`, with no numbered object directories. The pair's host interval
-is 1,157.230 s including connection; guest clocks resolve to one second. Hardware
-RAM is unrestricted/unmeasured, so this is separate from the 8 MiB emulator proof.
-The earlier 916/98 s hardware pair used different sources and an embedded package;
-it does not isolate the cost of the shared-store or package-default changes.
-
-Disk-backed linking and incremental reuse share `build/ofm` (or
-`--incremental-dir`). After the cold/warm pair, it contains one set of 190 `.ofm`
-images totaling 1,655,184 bytes, with one `.ofi` validity companion per module;
-there are no per-run object directories. Earlier focused native incremental controls
-also cover source changes, timestamp-only changes, forced rebuilding and template
-origins. Unchanged files retain their exact bytes and timestamps, while a changed
-dependency rebuilds only its consumer closure. Resident/disk image, relocation
-and rollback component checks pass independently.
-
-**Promoted-source self-host qualified, 2026-10-23.** The release bundle contains
-278 mapped inputs (3,423,951 bytes), source manifest
-`fnv1a64:1e8651abd5b52cb3`. Its complete 826,708-byte executable and live Rust
-oracle have digest `fnv1a64:900a3da58deb315a`; linked static reservation is
-868,436 bytes, including the embedded m68020 package. No bootstrap instrumentation
-is enabled.
-
-The full cold and unchanged incremental builds complete under 8 MiB total RAM
-(68020, 2 MiB chip + 6 MiB fast), installed Workbench 47.2, plain background,
-64 KiB stack and disk capture. Cold takes **281 s (4m 41s)** and rebuilds all 190
-modules; warm takes **59 s** and reuses all 190 with zero rebuilds. CLI totals
-are 280.92 s and 59.34 s. Each phase exits zero and produces the entire Hunk
-exactly matching live Rust and the bootstrap. The harness deletes the prior output
-before each phase and requires fresh protocol markers and phase return codes.
-CPU speed is unrestricted; these are FS-UAE durations, not physical 68020 timings.
-An earlier repeat alongside host tests took 345/87 s and is not used to assess
-promotion cost. These different source snapshots do not establish an isolated
-performance gain over the earlier 288/60 s checkpoint.
-
-This proves completion in that 8 MiB Workbench setup. Peak heap was not remeasured;
-it does not establish 2 MiB fit or a fresh per-process memory accounting result.
-A6000 validation of this promoted bundle remains pending. The native frontend
-implementation is deliberately retained; its internal refactoring is separate.
-
-The maintained ASM unit checks pass with the known pre-existing
-`examples_match_reference_outputs` failure excluded: implicit module wrappers
-appear in listings while the checked MOS listing still omits them. The failure
-also reproduces alone with unchanged production Rust, example input and helper
-behavior. Goldens were not refreshed to mask it. The redundant-test checker still
-reports 14 pre-existing autofixable sites (all unchanged from before promotion;
-the old tree had 18). Neither limitation is a successful full Rust quality-gate
-claim. Focused entry-order, native CLI, formatting, workflow and Clippy checks
-qualify their stated scopes.
-
-Continue parity work with shared opcore, then CPU families (6502, 68000, i8080,
-RISC-V and 6809), repairing Rust defects before qualifying corresponding native
-behavior. Keep CPU/family/dialect semantics in package owners and generic
-directives in shared processing. See the
-[performance diagnosis](native-performance-diagnosis.md) for retained measured
-results and the limits of those comparisons.
-
-## Earlier qualification and limits
-
-The 2026-10-12 frozen-image correctness-only opcore audit completed all 86
-unchanged roots under the fresh-run protocol: 32 positive roots match every
-requested live Rust artifact exactly, 36 expected-negative roots reject with
-diagnostics (not exact diagnostic parity), and 18 positive roots exit 20. All
-cases have fresh completed protocol evidence. Compared with the prior combined
-binding audit, four roots improve and none regress: `cond_syntax`,
-`module_qualified_section_map`, `module_use_include` and
-`section_module_use_include`. The unchanged `syntax.asm` now reaches sparse
-`.org` emission on line 196; it still fails.
-
-The 174.33-second correctness test includes host preparation and harness overhead;
-it is not a performance measurement. The Rust reference audit matches 81 roots;
-five expected-error roots lack comparable partial artifacts. An initial restricted
-host launch failed before guest startup and supplies no native result; the complete
-rerun used the required GUI/process access. Evidence and image/package/input
-digests are in `/tmp/opforge-static-includes-full-opcore-retry-20261012.json`.
-This does not qualify complete opcore or CPU-family parity.
-
-The 18 remaining positive failures group by fixture: five statement signature or
-expansion roots (`statement_boundary_span`, `statement_capture_types`,
-`statement_cross_module_ok`, `statement_expansion`, `statement_signatures`); four
-linker/output-policy roots (`linker_regions_full`, `linker_regions_minimal`,
-`linker_regions_no_dsection`, `linker_regions_pack_no_dsection`); three metadata
-roots (`module_metadata_block`, `module_metadata_output`,
-`module_metadata_outputs`); and six roots (`cli_json_outputs`, `expr_syntax`,
-`macro_syntax`, `module_basics`, `syntax`, `use_wildcard_import`). These are
-observed failure groups, not established causes. Source/session behavior and
-dynamic binding ownership still require focused controls outside this corpus.
-
-The numeric proxy-ownership repair qualifies direct and composed imported
-typed-member references: 18 positive controls match live Rust and two malformed
-`@0` controls reject freshly on 68020 and 6502. Unknown/mutable prefixes retain
-possible owners; a common owner is indexed once, while differing owners reject
-only when reached. Runtime block marking remains O(1), with no new heap allocation.
-A subsequent five-scenario matrix matches forward fields, forward compound
-aliases and mutable-kind changes on both targets (eight exact positive cases).
-The longer unknown prefix declared in another physical block still rejects on
-both targets; native dynamic selection between those owners remains pending.
-Rust now resolves actual declaration ownership, carries typed aliases through
-layout stabilization, and preserves used finalized schemas without retaining
-pruned code. Its focused member/schema controls pass; the native owner matrix
-continues to require the valid different-owner case to succeed.
-The current acquired-include regression passes all ten positive behaviors on
-each package (20 fresh exact cases), including inactive composed block references.
-That matrix is separate from the composed-member controls. Named acquired
-collections pass twelve fresh exact controls, including colonless
-and explicit-colon labels. The final candidate checks bounded batch publication
-and independently validates marker nesting and balance in inventory and runtime. Actual assembly-state/
-PC-dependent acquisition also remains pending. The identified proxy-repair image
-is 657,484 bytes with 681,816 bytes linked static reservation. The subsequent
-collection image is 659,608 bytes with 684,524 bytes linked static reservation; neither is peak RAM.
-
-The current full self-host proof covers source commit `7a903cf8`, manifest
-`ec940cb60e2202f6`: all 194 mapped inputs (2,580,296 bytes including the package)
-assemble natively into the complete 706,888-byte Hunk, exactly matching live Rust
-with fresh exit zero. Bootstrap and output embed only the m68020 package.
-The release FS-UAE 68020/74 MiB run takes 3,512.267856959 seconds (58m32.27s).
-The separate full instrumented A6000 run reports a 46,880,904-byte tracked peak,
-155.38 seconds preparation and 35.14 seconds assembly, with all storage freed.
-The earlier unembedded instrumented checkpoint had a 47,319,416-byte tracked peak;
-these are different configurations, not an isolated improvement comparison.
-The identical release bundle also passes on the
-A6000 in 118 seconds, with exact complete Hunk equality. Complete opcore/family
-parity and 2 MiB fit remain separate work. See the maintained
-[self-host proof](compact-frontend-vm-boundary.md#full-current-source-self-host-qualification).
-
-The separate shared text-owner component matches its complete live Rust artifact
-in a fresh native run. This covers builtin/custom maps, variable escapes, cloning
-and lifecycle APIs. The shared packed text-grammar component separately matches
-its complete 384-byte live Rust artifact, including planned/snapshot record flags
-and malformed-input rejection. Source directive/emitter and EXVM encoded-string
-provider integration remain pending; component proof does not qualify those paths.
-
-Source-session restructuring is in progress; its frozen-input lifecycle has
-focused native proof and is now the sole assembly driver. It does not yet support
-growing records or actual-state acquisition. Its isolated unchanged release
-control adds 0.76% on one sample and 952 bytes linked static storage.
-Independent symbol buffers now stage allocation and commit their views/count
-atomically. Fresh component and production matrices each pass twelve exact
-positive cases and two malformed rejections. Stress controls preserve cells and
-pointers across all five injected allocation failures, support prepared keys and
-lazy kinds, and exercise the 65,536-symbol bound. The unchanged release control
-changes from 27.064863 to 26.944213 seconds (-0.45%, one sample), with 568 more
-linked static bytes. Frozen session pins remain; actual-state acquisition,
-relocatable source views and peak heap are not yet qualified.
-
-Record-relative loop positions and refreshed owner views now pass twelve fresh
-exact collection cases and two malformed-input rejections through the production
-CLI. The unchanged release control changes from 26.848584 to 27.116166 seconds
-(+1.00%, one sample), with 504 more linked static bytes.
-
-Rust conditional declaration ownership is repaired in `aaca8086`; 98 focused tests
-pass. Native adds recursive shared-EXVM certification/evaluation for immutable
-scalar closures in private arrays, without publishing values globally. Four focused
-fresh positives match exactly across both CPUs, including transitive references
-and sign handling. The v3 feature control assembles 384 source bytes into 268 packed
-bytes in 1.801896042 s of release execution. Separate MEMD telemetry reports a
-641,792-byte peak, 1,031,784 bytes allocated and freed, and zero live bytes after
-cleanup. The unchanged 1,200-call release control changes from 33.089063959 to
-33.094098333 s (+0.02%, one pair; no measurable change).
-The current native repair separates executed immutable declaration activity from
-stored values. Ordinary-loop candidates no longer enter eager dependency indexing;
-unknown owners defer, only completed inactive owners allow shorter-name fallback,
-and an active owner retains its identity before value availability. Private scalar
-observations preserve numeric layout history across sizing resets without retaining
-compound pointers or granting immutable certificates.
-
-The activity checkpoint's 112-case matrix completed on both CPUs: 62 exact
-positive artifacts, 40 expected diagnostic rejections and ten mapped-section
-failures. Those counts remain historical; the matrix was not rerun after the
-mapped-flat repair. The 523.12-second batch is correctness-only and does not
-qualify exact diagnostic text. Rust `7073f2de` reconciles inactive readonly
-source symbols after completed sizing convergence.
-
-The isolated unchanged release control takes 33.291479875 s versus BS37's
-32.955889917 s (+1.02%, one sample each). Image and linked reservation grow 3,092
-and 2,960 bytes. Separate telemetry increases unchanged-control peak owned memory
-by 16 bytes; all allocations are freed. The activity feature control peaks at
-690,392 bytes and exercises two observation passes and one restored scalar row.
-[Measurement details](../performance/vm-efficiency.md#executed-declaration-activity-and-scalar-observations)
-identify the frozen artifacts and limits. These `68020-10m` checks do not qualify
-the 2 MiB product target or a fresh full current-source self-host.
-
-The mapped-flat repair now passes all ten former mapped owner cases freshly and
-exactly across 6502 and 68020. Seven mapped Hunk cases also match exactly,
-including reversed output selection, dependency-first assembly and two logical
-destinations; the Hunk BSS instruction-relocation regression is exact. The repair
-uses actual-geometry slot lookup, concrete first-declaration ordering, logical
-alias destinations and contiguous-flat selection, with BSS `initializedLimit`
-kept separate from `size`. It adds no state memory growth. Map v2 and v3 outputs
-are byte-identical. The v3 image is 678,120 bytes with 711,228 linked bytes
-(+260 bytes versus activity v7). No fresh full self-host or 2 MiB claim follows.
-The unchanged release control is 33.330524583 s versus 33.291479875 s (+0.12%,
-one pair); separate MEMD unchanged-control telemetry is unchanged from activity:
-1,282,360-byte peak, 3,182,136 allocated and freed, zero live, 27,022 packed
-bytes and a 425,506-byte prefix. The 34.441206458 s instrumented run is not
-release timing. See [mapped-flat measurements](../performance/vm-efficiency.md#mapped-flat-repair).
-The earlier schema-replay-only comparison
-(33.112641 to 32.804228 s, -0.9%, with 564 more linked bytes) predates this
-repair. UTF-8 preservation in Rust
-macro preprocessing is repaired in `a616140f`, with all 26 preprocessing tests and
-all 211 opcore library tests passing. BS36 text emission/provider integration passes 52 fresh native controls: 24 exact
-positive artifacts and 28 diagnostic rejections across 68020 and 6502. Its isolated
-unchanged release control grows from 27.42 s to 33.11 s (+20.8%, one pair); linked
-storage grows 13,464 bytes (+2.0%), and instrumented owned-memory peak is unchanged.
-See [source execution](native-source-execution.md) for scope and measurement limits.
-These controls do not establish complete opcore; the current full self-host proof is separate.
-
-VM-contract consolidation remains a separate pending design.
-Consolidate each VM's current capabilities into its own
-v1 contract, remove superseded formats and native VM version fields/checks/dispatch,
-while preserving package/container integrity and bounds validation.
-
-The BS37 shared reservation slice adds `.ds count` through numeric directive
-binding, shared expression preparation and assembly-owned output. Flat leading
-and trailing reservations produce no payload; internal holes retain zero-filled
-Bin storage and separate addressed Hex/S-record spans. Initialized sections retain
-padding, while BSS uses the existing independent fragment/placement geometry and
-produces no initialized bytes. Layout mode no longer selects Hunk serialization;
-explicit source Hunk descriptors retain that policy. Both shared and separate
-regions have focused proof. All 24 fresh reservation cases pass: 12 exact positive
-artifacts and 12 expected diagnostic rejections across 68020 and 6502. Six final
-Bin/Hex/S-record controls and the existing Hunk BSS regression also match exactly.
-The complete unchanged `syntax.asm` still rejects, now at labeled `.if` line 280
-instead of `.ds` line 114. This does not change the full corpus qualification claim.
-The unchanged release control takes 32.955889917 s versus 33.094098333 s (-0.42%,
-one sample per state), with 424 more executable bytes and 396 more linked bytes.
-Separate telemetry reports only 16 additional owned bytes at peak and zero live
-bytes after cleanup. See the [measurement details](../performance/vm-efficiency.md#shared-byte-reservations-bs37).
-No new full current-source self-host or 2 MiB qualification is claimed.
-
-The combined native forward/member matrix passes 16 fresh cases on 68020 and
-6502: ten exact positives and six expected rejections, covering forward
-scenarios, composed controls, and missing-member/scalar-prefix/longest-owner
-negatives. Numeric member-plan acquisition runs after declarations in
-`imports.finish`, retaining importing lexical/module owners; final frontend name
-counts refresh before exported values, plans and member keys. Ordinary
-contextual aliases in Rust still require their existing immutable certificate. The
-combined frozen image is 678,952 bytes with 712,060 bytes linked; see the
-[measurement record](../performance/vm-efficiency.md#control-labels-and-forward-member-preparation)
-for separate timing and heap results.
-
-Frozen source-policy v5 passes eight Hunk policy cases across both CPUs (two
-exact long-relocation outputs and six expected rejections). Narrow source Hunk
-references reject, as does CLI-only Hunk selection without source policy even
-with mapped geometry. Flat geometry is independent from output relocation
-policy; source `.output ...,format=hunk,sections=...` sets `Context.Relocatable`, with mapping
-validation retained. The combined `68020-10m` labeled-control/address matrix passes 24
-cases (22 exact positives and two expected diagnostic rejections), including
-conditional labels, parent-active publication, named iteration records and
-logical mapped sections, plus placed-word imported routine addresses at $0902.
-
-The native source path remains experimental. `.statement` signature matching and
-capture expansion are not implemented in that path; the historical corpus audit
-does not establish those capabilities. The unchanged release control rises
-separately by 0.73% for labels/output policy and 0.20% for forward preparation
-(one sample each). Owned-memory peak increases by 16 bytes for the former and
-stays unchanged for the latter, with zero live bytes after cleanup.
-These controls make no complete-opcore or 2 MiB claim; current self-host proof is separate.
-
-## Current integration checkpoint
-
-Rust match replay now records arm guards and executed ownership, including
-forward case-local loop counts and parent-active control labels (`fae73e68`).
-Mapped placement now reserves retained imported extents before later sections,
-replays changed geometry and preserves the unchanged-layout reachability budget
-(`3306a443`). Focused regressions pass. Full current host subsystem results are
-211 shared-core, 101 package and 549 VM unit tests passing; VM integration tests
-also pass. A stale authority test now mutates the effective CPU-owned table.
-
-Native match handling uses one current eight-head shared branch program, typed
-frames and existing guard observations. Configuration classification IDs now
-occupy a disjoint private negative domain. The complete fresh 70-case matrix
-passes 38 exact positives and 32 expected diagnostic rejections across both
-packages. Preparation-only effects inside retained match envelopes remain a
-separate language gap.
-
-Scalar and typed expression capsules share bounded opaque framing across operand
-transport. The upstream classifier now routes outer parenthesized comma children
-through existing structural preparation, without assigning CPU meaning to them.
-Seven tuple/displacement/product controls match freshly and two malformed cases
-reject; four immediate/external-65C02 controls also match exactly.
-
-Sorted disjoint emission spans and inserted-span coalescing pass all eight
-Hex/S-record placement controls on 6502 and 68020, including the stronger
-single-region mapped-growth cases. One pre-START emulator stall required an
-isolated fresh retry; it is not native algorithm evidence.
-
-Static included-source capture now acquires/indexes child streams before graph
-ordering. The shared FilePlan selector owns syntax, the conditional owner decides
-static acquisition, and the resolver/reader-suspension code is shared with runtime
-acquisition. Eighteen exact positives and twelve expected rejections cover nested
-paths, actual module search, included `.use` edges, selected-file siblings,
-cycles, assets and two unchanged default-8085 examples. Runtime/expanded
-module-graph changes remain rejected. Initial CPU bootstrap skips include
-statements and balanced conditional regions; template definitions within such
-regions remain a conservative initial-selection barrier.
-
-[Separate release and heap controls](../performance/vm-efficiency.md#separate-follow-up-costs)
-show no substantial tuple/framing/output regression. Static acquisition changes
-the unchanged control from 33.567695750 to 34.875348041 seconds (+3.90%), with
-16 additional peak owned bytes and zero live owned allocations on exit.
-These are focused integration results, not complete opcore, a new full self-host
-or 2 MiB proof. The complete current opcore audit is reported above.
-
-## Immediate shared-language sequence
-
-### Active statement slice
-
-The five unchanged statement fixtures define the next structural gap. Move
-signature compilation, typed token matching and definition-head policy into
-shared PRVM services, retaining one immutable offset-based signature plan across
-Rust imports and clones. Native preparation supplies normalized lexical facets;
-it must not recreate signature syntax or instruction-specific register parsing.
-Keep overload selection, literal adjacency, numeric ranges, letter/digit fallback,
-caller labels and definition-relative provenance covered against the independent
-core reference behavior.
-
-First qualify the compiler/matcher components and package boundary. Then connect
-numeric statement storage to the existing template cursor and substitution owner,
-rather than adding another expansion engine. Component completion alone does not
-add `.statement` support to the native CLI. The new BS38 preparation programs
-have no native VM-version fields or dispatch; this does not complete the pending
-consolidation of older VM contracts.
-
-The initial shared-service component qualifies 187 cases in one fresh native
-run: exact live Rust plan/capture/status output, explicit zero guest exit and
-completed protocol. It covers signature syntax, typed matching, head modes,
-UTF-8 normalization and atomic capacity/budget failures. Start-to-completion was
-5.054530 seconds on FS-UAE 68020/10 MiB; the 27.95-second host test also includes
-assembly and runner overhead and is not CLI assembly timing. All five unchanged
-Rust statement fixtures still match their Hex and normalized listings, including
-cross-module use. Rust now retains invocation provenance for a label emitted by
-an empty statement body; opaque preparation caches stay out of semantic equality
-and AST debug representation.
-
-Native template storage exposes a numeric external-definition facade, and a
-separate adapter stages normalized facets from owned TKVM records. Invocation-prefix
-selection, overload dispatch and generic letter/digit fallback have shared VM
-services. The connected source/template orchestration is described below; these
-earlier component proofs alone did not establish CLI invocation.
-The adapter separately qualifies 96 cases against live Rust facet output,
-including numeric suffixes and overflow, canonical punctuation, decoded/lossy
-UTF-8, name IDs, bounds and atomic publication failures. Its fresh native
-start-to-completion time is 6.335172417 seconds. This is the owned-record boundary,
-not complete TKVM-to-statement CLI execution. Disabled statement telemetry builds
-are byte-identical to removed calls under all three incomplete gate combinations;
-enabled telemetry assembles and has static ABI-preservation checks, without a
-claim of enabled native execution.
-The native package boundary qualifies all 68 current cases through one frozen
-validator and isolated case inputs: the valid package returns zero and 67
-malformed packages return the exact expected nonzero status, each with fresh
-completion and zero harness exit. The correctness test takes 105.96 seconds
-including assembly and two emulator boots; it is not assembler timing. Two old
-name-ID mutations now replace the complete 16-bit field with an out-of-bounds
-ID, rather than relying on a low byte that became valid as the name table grew.
-
-The unchanged release macro control changes separately from 34.697495584 to
-34.898929042 seconds (+0.58%, one sample each); peak owned storage rises by
-32 bytes, with zero live owned allocations on exit. Release image growth is
-2,872 bytes and linked reservation growth is 2,832 bytes. See the
-[foundation comparison](../performance/vm-efficiency.md#shared-statement-preparation-foundation-bs38).
-None of these component/control results adds CLI statement invocation or a new
-full self-host claim.
-
-The invocation checkpoint qualifies 242 current shared component cases against
-live Rust output, with fresh completion and explicit zero guest exit. A9 lives
-in the current A7 matcher program; the superseded 125-byte program is rejected,
-and the latest program is 133 bytes. Routing selects the longest visible keyword
-prefix, preserves adjacent label-colon boundaries, and delegates ordinary versus
-letter/digit fallback matching and overload ambiguity to shared services. Native
-selection and derived-view capacities are checked independently and outputs stay
-atomic on failure. The 11.954011083-second component run on FS-UAE 68020/10 MiB
-is correctness timing for this expanded workload, not CLI performance.
-
-Rust's exported invocation scope now retains the caller-visible qualified key:
-`Q.PUSH` remains `Q.PUSH` rather than leaking unqualified `PUSH`. Selected aliases
-and wildcard imports retain their respective keys and share immutable compiled
-plans. All five unchanged statement fixture outputs still match; nine focused
-assembler tests, 962 affected subsystem tests and Clippy pass. Source acquisition
-and numeric selection have separate owners. Export/scope rows are still rebuilt
-per Rust invocation; no optimization or broad statement parity is claimed.
-
-The native CLI now connects direct source statement declarations and invocations
-to the shared services and existing packed template cursor. Ten fresh native
-cases match live Rust output exactly, with zero guest exit and completed protocol:
-byte/word overload selection, caller labels, empty and duplicate captures, named
-and positional text substitution, decoded expression captures, numeric fallback,
-keyword suffixes and independent macro/statement names. Definition storage,
-caller-visible keyword exposure, invocation scratch and capture transport have
-separate owners. Private statement carriers do not register ordinary macro names.
-The temporary capture writer restores the live frontend frame used by binding
-callbacks; new key arenas are allocated before exposure validation.
-
-Eight additional connected same-source module-graph cases qualify actual `.use`
-acquisition: qualified aliases, selected bare/renamed exports, wildcard/full
-module qualification, later-import replacement with local overloads, and rejection
-of private selection, implicit leaf aliases and sibling-block ambiguity. The five
-positive cases match live Rust bytes; the three negative cases complete freshly
-with guest exit 20 and diagnostics, without an exact diagnostic-text claim.
-
-Calls inside expanded macro/segment/statement bodies now have ten focused fresh
-native/live Rust comparisons. They cover forward callees, numeric/text formals,
-keyword adjacency, literal numeric spelling, caller-module lookup from an imported
-body, inactive calls, explicit body labels and inherited labels through an empty
-statement. A separate plain macro case proves the packed path with no statement
-definitions. This is focused coverage, not complete `.statement` or opcore parity.
-
-Physical token acquisition retains optional whole-line recipes only within
-template bodies (plus conservative dynamic acquisition). The existing shared
-classifier tracks this independently of blocks, namespaces and configuration
-activity. The template cursor uses optional recipes when a lexical consumer is
-needed; otherwise it removes the private trailer and executes the packed body.
-Required substitution recipes remain required. Each returned record explicitly
-publishes lexical freshness and numeric inherited-label provenance. Dispatch never
-reuses stale caller tokens or rereads original files.
-The separate exposure component validates acquired import descriptors; the eight
-connected cases are the current acquisition proof. These focused cases do not establish hardware/2 MiB qualification; current self-host proof is separate.
-
-The unchanged release macro control separately takes 34.904874125 seconds before
-this integration and 36.037844917 afterward (+3.25%, one sample each). The image
-grows by 21,624 bytes and peak owned storage by 2,880 bytes (+0.22%) in separate
-instrumented runs, with zero owned storage left on exit. These costs are isolated
-from the earlier foundation delta; see the
-[integration comparison](../performance/vm-efficiency.md#connected-statement-preparation-and-invocation-bs38).
-
-The expanded-body slice separately changes the same release control from
-36.030338375 to 36.227721417 seconds (+0.55%, one sample each), grows the image
-by 720 bytes and peak owned storage on that control by 16 bytes. These small
-control deltas do not measure recipe storage on a large template-heavy project;
-retain that distinction when qualifying the full native source.
-
-The subsequent frozen 86-case opcore audit qualifies 35 positive cases with
-exact live Rust/reference artifacts and 36 expected negative cases with fresh
-rejection/diagnostics (no exact diagnostic-text claim). Fifteen positive cases
-remain: CLI JSON, expressions, four linker cases, macro/module syntax, three
-metadata cases, three statement fixtures and general syntax. All current Rust
-reference oracles pass. This raises positive coverage from 32 to 35; it does not
-close opcore parity. A subsequent focused repair qualifies the unchanged
-`statement_boundary_span` fixture and a blank/comment-only body control, including
-`;without a space`. Empty token lists now bypass optional body-recipe generation.
-This raises the individually qualified positive total to 36, with 14 remaining;
-the complete audit has not been rerun on that image. Instrumented localization
-places `statement_capture_types` and `statement_signatures` at 8085 NOP emission,
-after successful preparation. Their prepared package omits a numeric candidate
-for the structured no-operand table mode; keep that work in the i8080 family
-phase rather than changing these original examples.
-
-The empty-body repair separately measures 36.251036417 to 36.245907375 seconds
-on the unchanged release control (single samples, effectively unchanged).
-Image and linked reservation grow by eight bytes. It adds no allocation or
-layout fields; heap use was not remeasured for this focused guard.
-
-The numeric flat-origin slice now preserves append-only initialized payloads
-while allowing `.org` in either direction. One sorted, disjoint numeric span
-image applies Rust's later-write overwrite policy and supplies Hex, S-record
-and streamed Bin output. Bin fills internal holes with zeroes, trims
-leading/trailing uninitialized space, and reuses the 4 KiB transport buffer
-without allocating new origin holes. Existing reservation materialization and
-placed-section/Hunk geometry stay in their current owners. Sixty fresh native
-artifacts match live Rust across ten scenarios, two CPUs and three formats;
-nineteen numeric span controls match an independent address/offset model.
-The pure writer controls exposed legal Motorola forms rejected by Rust:
-memory-to-absolute MOVE and symbolic immediate CMPA. The shared family now
-accepts bare absolute symbols; package selectors cover indirect/update MOVE
-sources to absolute destinations and long ADDA/SUBA/CMPA pointer immediates
-with ABS32 fixups. Six opcode/relocation/width/CPU tests, 215 family tests and
-570 VM tests pass. The unchanged legal harness subsequently passes nineteen
-fresh native writer controls, including empty images, aliased invalid views,
-chunk boundaries and the inclusive u32 end. This does not claim complete MOVE
-coverage: absolute-to-absolute byte/word selectors remain a family gap.
-Existing MOVE/ALU/profile builders now have separate owners; the parent package
-file shrinks from 10,725 to 7,776 lines without changing existing profile order.
-
-The separate unchanged release control measures 36.213061584 to 36.237453667
-seconds (+0.067%, single samples). Image grows 1,528 bytes and linked reservation
-1,504 bytes. Separate MEMD runs retain a 1,285,768-byte peak; total allocations
-increase 4,352 bytes, all freed. This is not a full self-host or hardware claim.
-
-The complete frozen 86-case audit now qualifies 38 positive cases with exact
-live Rust/reference artifacts and 36 fresh expected rejections (no exact
-diagnostic-text claim). Twelve positive cases remain. Both original
-`module_basics` and `syntax` now pass, along with the empty statement fixture.
-Remaining groups are CLI JSON, mixed CPU phases, four linker output-policy
-cases, macro syntax, three metadata cases and two statement/8085 fixtures.
-All audited Rust reference oracles pass. The audit uses the frozen Rust oracle
-before the separate Motorola legal-form repair; requalify affected references
-when that repair changes package semantics.
-
-Broad Rust qualification remains red independently of these focused proofs.
-The pre-repair frozen assembler suite has 170 failures; the first repaired
-suite has 165, with one introduced obsolete explicit-`.L` diagnostic assertion
-now corrected and passing. Most failures compare frozen legacy native packages
-or old source/version/topology layouts. The remaining semantic/oracle failures
-need individual triage, not blanket expectation refreshes. A later broad run has
-167 failures: the obsolete Motorola assertion is gone, while the new example
-exposed two inventory omissions (now fixed with its S-record and explicit counts)
-and a parallel host-test scratch-directory collision is being repaired. The Motorola
-reference audit has the same 35 listing differences before and after this
-repair (implicit module provenance/qualified names); instruction payload checks
-are unchanged. A new explicit-module memory example has only its own Hex/listing
-references (Hex, S-record and listing), checked against independent opcodes and pointers. No existing
-reference or frozen package has been refreshed to conceal those failures.
-
-Expression-corpus localization separately identifies mixed `.cpu` phases:
-the 65c02 capsule cannot bind the later `6502` CPU identity, and execution also
-requires the current capsule's CPU. This needs real phase/package ownership,
-not treating 6502 as a 65c02 alias or suppressing unresolved references. Keep it
-explicit while completing the independent origin/output slice.
-
-The separate Motorola package repair is committed as `abd177df`. Regenerated
-embedded selectors add 7,080 bytes to image/reservation; the unchanged release
-control measures 36.395603667 to 36.254972459 seconds, with unchanged measured
-heap peak and allocation totals. Do not combine this delta with the native
-origin change. The flat-output component supports inclusive `$ffffffff`; the
-connected assembler still needs separate qualification/repair for origins at or
-above `$80000000` and terminal-PC overflow. The sixty connected cases do not
-establish that full address-domain boundary.
-
-Dotted BIN/FILL metadata now uses shared PRVM operand operations to publish
-numeric ranges/fill and an acquisition-only spelling span. Native preparation
-owns a dynamic spec vector; naming and streaming remain separate output owners.
-The complete vector is preflighted before its first file is opened. Fresh proof
-covers 32 positive inline cases with exact live Rust artifacts/inventories and
-15 fresh negative rejections, including a late invalid path leaving no earlier
-binary. Four separate instrumented cases free their vectors and preserve zero
-live ownership. The flat component has 29 exact native controls, including
-inclusive range clipping/padding, empty images and malformed requests.
-VM/package suites pass (573/101 tests); focused Clippy and native style pass.
-The initial metadata control is 36.296708584 to 36.408205709 release seconds;
-image grows 1,672 bytes, reservation 2,116 bytes, measured peak/total heap stays
-unchanged. Final vector preflight separately measures 36.263818042 to
-36.482956750 release seconds (+0.60%, single samples), adding 52 image/40
-linked bytes with no new allocation. These proofs
-do not establish metadata blocks, target overrides, listing provenance, CLI
-range/fill arguments, section-metadata BIN geometry or full current self-host.
-
-A bounded design review confirms mixed CPU phases need a real identity domain
-and captured lexical/execution context: exchanging the current package pointer
-would collide package-local name/qualifier IDs. The next structural experiment
-should establish a catalog-owned name domain and atomic package activation,
-then qualify unconditional sequential phases before broadening to imports,
-macros and deferred conditions. Keep pipeline grammars separate; a common name
-domain must not become a union lexer. Measure pool/capsule storage before wiring
-the new contract; avoid a full frontend/EXVM workspace per CPU. VM consolidation
-and remaining source/output gaps remain independent completion requirements.
-
-Rust metadata completion now rejects unclosed metadata/output/target blocks at
-both pass boundaries, including direct implicit-module execution. Inactive
-`.meta`/`.endmeta` no longer mutate state through lexical-scope replay. Four new
-controls and eighteen affected host checks pass; all three existing metadata
-fixtures retain their selected settings and bytes. Native block syntax/target
-selection remains pending, and the LIST-bearing fixture needs actual listing
-output rather than merely recognizing its directive.
-
-The host-only name-domain experiment establishes that the existing runtime
-model already supplies a catalog-wide prefix: 2,039 identities and 24,020 UTF-8
-spelling bytes. All 16 registered numeric pipelines together contain 3,229
-identities and 311,439 spelling bytes; internal plan identities account for much
-of that growth. A hypothetical eight-byte offset/length table adds 25,832 bytes,
-with two more bytes per local-to-domain mapping entry. These are measured host
-storage counts, not native allocations or a proposed union lexer. Three focused
-tests qualify deterministic mapping, capacity and the common model prefix.
-The acquisition owner now exposes its complete interner vector through a pure
-helper. Exact pre/post BS38 bytes match across 43 CPU/dialect resolutions;
-the existing byte-only API is unchanged. With acquisition identities included,
-the 16 distinct pipelines contain 3,276 identities, 311,728 spelling bytes and
-26,208 proposed table bytes. For 6502/65c02/68020 the complete identity counts
-are 2,093/2,086/2,304. This closes the measurement API gap, without wiring a
-new native format or retaining that whole internal spelling union at runtime.
-The next host-only experiment seeds that complete domain before numeric lowering,
-preserving the existing prefix and appending names in fixed pipeline/interner
-order. Sixteen canonical pipelines retain their numeric facets, selectable
-candidate order, program bytes and BS38 block lengths; representative encodings
-and invalid/missing seeds are checked. The ordinary producer stays unchanged.
-This is producer evidence only: native atomic activation and retained execution
-contexts are still unimplemented.
-
-The full current-source self-host attempt after the BIN/FILL checkpoint fails
-in input discovery before its first source record: 188 staged files include 159
-assembly candidates, exceeding the CLI's former fixed 128-path bound. Package
-load and frontend setup succeed in the bounded gated setup capture. This is an
-early preparation failure, not completed assembly or a new self-host proof.
-The repair separates stationary traversal scratch from a growing owned path
-table. Fresh native controls at 127, 129 and 200 files pass with exact live Rust
-bytes, including duplicate search roots. The 162.97-second batch is correctness
-evidence, not a comparative performance result. At 159 candidates the path and
-traversal owners need 69,936 steady bytes and 102,704 bytes during geometric
-growth; these are calculated storage bounds, not measured whole-process peaks.
-The ordinary release image grows 132 bytes. The full native run on manifest
-`b653d92c5f9df3ce` (188 files, 2,085,468 source bytes, 248,200-byte live Rust
-Hunk) passes discovery but later exits 20 at `binary_block_index.asm`, line 7.
-Its fresh START/DONE interval is 669.041911792 seconds; total native harness
-work is 719.094207792 seconds. Those are failed-run durations, not successful
-assembly performance. This checkpoint does not qualify full self-host, 2 MiB
-fit or opcore completion; localize the later preparation failure independently.
-The isolated unchanged 68020/10 MiB release control measures 36.243138208 to
-36.274235083 seconds (+0.086%, single samples), with 132 more image bytes and
-120 more linked reserved bytes. Separate instrumented accounting reduces peak
-owned heap from 1,285,768 to 1,253,256 bytes and total allocation/free from
-3,189,896 to 3,157,384 bytes; both runs end at zero live ownership. These heap
-figures describe the small control, not the full self-host. The receipt is
-`/tmp/opforge-discovery-paths-cost-20261012.json`.
-
-The later failure is another preparation capacity boundary, not an instruction
-or `.endmodule` defect. A project with 173 modules and 510 import edges passes
-fresh native artifact proof; 175 modules and 516 edges rejects its 513th import.
-Both live Rust oracles pass independently. Import items, selected-name rows and
-graph links now grow in owned blocks with word-index limits, independently of
-the 512-node graph. Configuration-to-semantic graph reuse releases its old link
-payload before initialization. The repaired 516-edge case passes exact native
-comparison. A fresh component proof checks relocated row storage, rejection of
-65,536 rows, live-owner initialization guards and a graph-link byte offset of
-65,536 using 32,769 edges. Its 0.762623417-second interval is component timing,
-not full assembly performance. Full current self-host remains unqualified.
-An independent one-module, zero-import probe passes with 1,023 named blocks but
-rejects with 1,025 at block indexing; that fixed capacity needs a separate repair.
-The block index now validates packed framing/markers before sizing the retired
-name arena to an eight-byte header plus sixteen bytes per named span. The nesting
-stack becomes the reachability queue after indexing; both use long byte offsets.
-The repaired 1,025-block case matches Rust exactly. Word indices admit 65,535
-markers; the existing binding-owner ambiguity sentinel still limits real outer
-owners to 65,534, with an explicit rejection before a collision.
-On the unchanged 11,592-byte 68020/10 MiB control, the separately measured release
-steps are 36.520891708 to 36.267337417 seconds for imports, then 36.267337417 to
-36.402402792 for blocks. Single samples do not establish a speedup. Imports add
-328 image/304 linked bytes; blocks add 264/240. Separate instrumented peak owned
-heap falls from 1,253,256 to 1,234,376 for imports and stays unchanged for blocks;
-allocation/free totals fall from 3,157,384 to 3,139,528, with zero final live
-ownership in all three runs. Receipts are
-`/tmp/opforge-import-blocks-release-cost-20261012.json` and
-`/tmp/opforge-import-blocks-memory-cost-20261012.json`. These controls do not
-qualify full current self-host or full-workload memory use.
-
-Metadata blocks and target overlays now share numeric PRVM events and output
-owners with dotted fields. Canonical CPU ordinals are package-owned; native
-processing never compares target spellings. Default fields inherit independently,
-and target BIN vectors replace defaults. Sparse target settings own their vectors;
-the effective view borrows them and is selected before emission-span capture.
-Full row integrity is checked during acquisition, with ordered head lookup during
-execution. The catalog has fourteen canonical targets and 403–404 rows, about
-3.2 KiB per preparation program. Config grows from 540 to 1,104 static bytes;
-each touched target allocates a 544-byte slot. Fresh native proof covers 46 exact
-positive output/inventory cases and 24 fresh negative rejections. The 254.16-second
-batch is correctness evidence, not comparative performance. Five additional
-instrumented target/default-vector and failed-block controls preserve zero live
-ownership. Metadata catalog generation lives in a separate acquisition helper;
-its extraction preserves the complete 745,628-byte control image byte-for-byte. Package/VM suites
-pass 101/575 tests, with affected host controls and Clippy passing. LIST, dynamic
-metadata values and source-context-dependent execution remain separate gaps;
-this does not complete VM consolidation or full current self-host.
-The unchanged release control separately measures 36.283456083 to 36.248212917
-seconds; this single sample does not establish a speedup. Image/reservation grow
-26,708/27,220 bytes. Separate instrumented peak owned heap grows 6,320 bytes
-(1,234,376 to 1,240,696), with matching allocation/free totals and zero live
-ownership. The receipt is `/tmp/opforge-metadata-target-cost-20261012.json`.
-
-The subsequent full current-source run exits 20 after 2,279.485857750 seconds
-of fresh START/DONE observation. Its 190-file manifest is
-`fnv1a64:435058d5c2c55ee5` (2,104,038 source bytes; live Rust Hunk 250,200
-bytes). `debug/telemetry_macros.i:105` is the reported location, not an established
-cause. No current-source self-host equality is qualified by that failed run.
-A reduced descriptor-module probe separately exposes ordinary `.output` reaching
-expression preparation: metadata acquisition now gives the head a package identity,
-while shared source keyword classification formerly accepted only source identities.
-Preparation now resolves both identity domains through a bounded package spelling
-view; numeric runtime records stay unchanged. The reduced complete 72-byte Hunk
-matches live Rust freshly after this repair. Eight new positive/negative host
-controls cover ordinary and metadata-context `.output` on both CPUs; all eight
-now pass fresh native execution (four exact artifacts, four source rejections).
-The unchanged 11,592-byte release control measures 36.484295417 seconds before
-and 41.900616833 after: +5.416321416 seconds (+14.85%), one sample per image.
-Image/reservation grow 140/136 bytes. Instrumented peak owned heap is unchanged
-at 1,240,696 bytes; both allocation/free totals match and live ownership is zero.
-The isolated receipt is `/tmp/opforge-source-head-cost-20261012.json`.
-
-The subsequent diagnostic full run still exits 20 at the same physical line,
-after 2,339.681234709 seconds. Its 191-file captured manifest is
-`fnv1a64:9e70f1bcf4592374` (2,105,866 source bytes; live Rust Hunk 250,340
-bytes). Gated stage 11 identifies fragment-plan binding during preparation;
-assembly has not started. This is a different instrumented input, not a
-before/after speed comparison. Captured line status and cumulative plan storage
-are the next discriminator; the `.output` repair does not clear this failure.
-Two fresh complete native CCR macro controls (unused and invoked) match live
-Rust. Gated preparation phases 317–319 retain scalar captured-plan status,
-handles, byte extent and destination usage around binding; release emits none
-of the snapshot code/storage. Whole-source stress cases with 12,000/24,000
-ordinary macro-body lines are accepted by live Rust; their native growth proof
-is pending. These diagnostics and controls are not full self-host completion.
-
-The growth probes both reject at line 6,476 with captured line status zero,
-handle 1 and 162-byte plan storage. Destination usage is 1,048,508 bytes and
-binding returns failure: the next ordinary macro-body plan exceeds the shared
-1 MiB scratch-block cap. This reproduces stage 11 independently of CCR syntax.
-Macro-plan storage now grows through `reserveBounded` under its own largest even
-unsigned-long extent (`$fffffffe`), rather than changing shared scratch policy.
-Growth allocates only requested capacity, keeps offset handles, preserves old
-storage on allocation failure and checks every size-addition carry before
-publication. All five complete native source controls now match live Rust,
-including unused/invoked CCR macros and 4,000/12,000/24,000-line bodies. The
-four direct preallocation-overflow cases now pass fresh native execution,
-including nonzero status/CCR, zero handle, unchanged arena/content and preserved
-register checks. The large-source batch is correctness evidence, not a speed
-comparison. Full current-source self-host equality remains pending.
-The diagnostic-only snapshot leaves the release image byte-for-byte unchanged.
-The storage repair's separate unchanged release control measures 42.024316792
-seconds before and 41.813961917 after (one sample each; no speedup claim).
-Image/reservation grow 28 bytes. Instrumented peak heap stays 1,240,696 bytes,
-with equal allocation/free totals and zero live ownership in both controls.
-This small input stays below the former cap; larger inputs now allocate their
-required plan storage. Receipt: `/tmp/opforge-macro-plan-growth-cost-20261012.json`.
-
-The subsequent full current-source run (191 files, 2,108,729 source bytes,
-manifest `fnv1a64:da765f94e90e7ea2`) passes that macro-plan failure but rejects
-in `prvm_statement_invoke_req.asm:138`, at preparation scope stage 5. Guest
-START-to-DONE is 3,779.212573958 seconds with instrumentation; assembly has not
-started. The source identity table stops at 29,127 entries because its 36-byte
-entries inherited the shared 1 MiB scratch cap. With 2,688 package identities,
-the observed total of 31,815 identities identifies that exact boundary.
-This remains a failed full self-host, not an output comparison.
-
-Source identity storage now grows within its word identity/index-link contract,
-bounded by the package base and a maximum of 65,535 source entries. Numeric
-binding-plan producers and consumers use their own even unsigned-long byte
-extent, retaining validation, non-aliasing, overflow checks and word candidate
-counts. The shared scratch limit remains unchanged. Fresh native component
-proof covers all 62,848 source identities available with package base 2,688,
-the last global ID 65,535, rejection of the next identity without mutation,
-and first/last relookup. A separate native proof installs a 1,179,638-byte plan
-with 65,535 candidates and checks atomic rejection of candidate-count overflow
-and an aliased installation. These are storage correctness proofs; a new full
-current-source run is still required.
-The separate unchanged 11,592-byte control measures 41.836411250 seconds before
-and 41.616377542 after without telemetry (one sample each; no speedup claim).
-Executable size grows 124 bytes and linked reservation 140 bytes. Instrumented
-peak heap remains 1,240,696 bytes, with zero live ownership and allocation/free
-totals of 3,145,848 bytes in both runs. This input does not cross the old limits;
-the full run must measure the storage needed beyond them. Receipt:
-`/tmp/opforge-identity-bounds-cost-20261012.json`.
-
-The next fresh current-source full run (191 files, 2,110,004 bytes, manifest
-`fnv1a64:45e11043e5d3c84b`, Rust Hunk 250,492 bytes) passes the previous
-source-identity boundary and rejects at `binary_statement_execution.asm:80`,
-`Pack .res arguments.FRAME_BYTES`. Preparation scope stage 5 reports 34,554
-global identities, with the preceding macro-plan binding successful. Guest
-START-to-DONE is 4,454.531584 seconds (74 minutes 15 seconds), instrumented.
-Assembly never starts; full self-host remains failed. The captured MEMD has
-zero allocation failures, a 41,112,680-byte tracked peak, zero terminal live
-ownership and equal allocation/free totals of 93,269,096 bytes. Its unfinished
-preparation flag is `0x10`; this is failure-localization evidence, not a clean
-completed phase benchmark. Receipt/log and retained telemetry are in
-`/tmp/opforge-selfhost-identity-bounds-full-20261012.log` and
-`/tmp/opforge-selfhost-identity-bounds-capture-20261012/`.
-The same rejection reproduces in a small native input when an earlier struct
-field `Arguments` shadows the imported alias `arguments`; removing that field
-makes the exact Rust comparison pass. Shared binding now probes the existing
-import resolver with a temporary entry and lookup-only binder before capturing
-numeric compound-member alternatives. A complete unconditional imported target
-retains its ordinary precedence; missing or conditional targets retain member
-alternatives, and private targets retain ordinary visibility rejection. The
-probe publishes no identities, plans or values. Its scratch-buffer writes are
-safe because callers own copied spellings. Temporary struct diagnostics were
-removed after localization.
-All 17 fresh native spelling/import/member controls pass, including alias
-shadowing, compound fallback, private rejection and one 6502 case. All ten
-existing conditional/member ownership controls also pass across 68020 and 6502.
-Rust oracles, Clippy, formatting, native guards and independent review pass.
-The subsequent full current-source run still fails: all captured source replay
-completes, then final prepared-record remapping rejects before assembly begins.
-Fresh START/DONE is 2,280.086436417 seconds (38 minutes), guest exit 20;
-191 files / 2,111,719 source bytes, manifest `eb0bd386bdf4bafb`, live Rust Hunk
-250,640 bytes. There are 51,801 numeric identities and 1,523,765 prepared bytes.
-Tracked peak is 47,204,712 bytes, with no allocation failure and zero live
-ownership after cleanup. This is failure localization, not self-host completion
-or a comparative speedup. The failure-only capture is now implemented and gated out of release builds.
-A fresh component probe demonstrated an opaque six-byte plan handle being read
-as a source ID after the adjacent real symbol had been correctly rewritten.
-The decoder now validates and skips typed terminal plan payloads, preserving
-ordinary declaration markers and opaque wide-number payloads. It also skips
-canonical typed strings by their bounded LE16 payload length. Fresh native
-string and plan controls pass, including malformed lengths/tails, unsigned IDs,
-empty strings, declaration-marker collisions and mandatory-tail rejection.
-These controls qualify their boundaries; the full current-source rerun remains
-necessary to identify the complete self-host outcome.
-Receipt: `/tmp/opforge-selfhost-qualification-full-20261013.log`.
-The separate unchanged release control measures 41.919729125 seconds before
-and 41.916686042 after (one sample each; no speedup claim). Executable size
-grows 148 bytes and linked reservation 140 bytes. Both instrumented runs retain
-the same 1,240,696-byte tracked peak, zero live ownership and equal allocation/
-free totals of 3,145,848 bytes. Receipt:
-`/tmp/opforge-qualification-cost-20261013.json`.
-
-The separate unchanged decoder-repair control measures 41.721528084 seconds
-before and 41.758562875 after (+0.09%, one sample each). Release image and linked
-reservation grow 192 bytes. Instrumented runs retain the same 1,240,696-byte
-tracked peak, zero live ownership and allocation/free totals of 3,145,848 bytes.
-Enabled failure capture adds 76 bytes of debug storage; release capture emits
-no code/data/import. Wrapper gate/preservation tests, 24 decoder tests, native
-guards, formatting, Clippy and independent review pass. Receipt:
-`/tmp/opforge-remap-cost-20261013.json`.
-
-The full rerun after that decoder repair passed final binding and module-order
-materialization, then rejected block indexing before assembly. Fresh START/DONE
-is 2,297.603380750 seconds (38 minutes 17 seconds), exit 20, no output Hunk;
-191 files / 2,114,338 source bytes, manifest `af2aba3f02a8279e`, Rust Hunk
-250,832 bytes. There are 51,895 identities and 1,525,719 prepared bytes. Tracked
-peak is 47,270,248 bytes (+65,536 from the preceding failed run), with no
-allocation failure and zero live ownership. Allocation/free totals match at
-105,598,160 bytes. These are incomplete diagnostic runs, not comparable full
-assembly timings. Receipt: `/tmp/opforge-selfhost-remap-full-20261013.log`.
-
-The index validator still allowed only older record flags. It now accepts the
-shared current flag contract while retaining exact marker framing, balance and
-reserved-bit rejection. The following reachability scan had the same opaque
-payload gaps as remapping; both now use one bounded payload helper. Fresh native
-controls verify current flags, malformed markers, real references retaining
-blocks, and strings/plan handles leaving unreferenced blocks omitted. All four
-component boundaries pass after correcting the reachability fixture's graph
-binding key. Failure capture is reused with a four-byte consumer tag to identify
-remap, block-index and reference-scan failures; it remains excluded from release.
-The separate unchanged release control measures 41.862387833 seconds before
-and 41.936003333 after (+0.18%, one pair). Release image grows 212 bytes and
-linked reservation 196 bytes. Both instrumented controls retain a
-1,240,696-byte tracked peak, zero live ownership and equal allocation/free totals
-of 3,145,848 bytes. Receipt: `/tmp/opforge-index-cost-20261013.json`.
-Formatting preserves release/instrumented image bytes. Native guards, Clippy,
-wrapper gating/preservation, 26 decoder tests and independent review pass.
-The next full current-source rerun is still required.
-
-The subsequent full current-source run passed preparation, block indexing and
-reference selection, then entered assembly. It rejects in instruction encoding
-at the retained origin `binary_memory.asm:124`, immediately before
-`movea.l 4.w,a6`. The numeric instruction identity is confirmed as `movea`.
-Six focused native probes match all four disabled telemetry-only cases and reject
-both standalone and macro-following `movea.l 4.w,a6`; the package member operand
-is consumed as an ordinary typed member expression during preparation. This is not
-a completed self-host. Fresh START/DONE is 2,380.911178041 seconds (39 minutes
-41 seconds), exit 20, no Hunk. Inputs: 192 files / 2,116,884 bytes, manifest
-`1e4322d6d6474b76`, Rust Hunk 251,044 bytes. Tracked peak is 47,286,632 bytes,
-zero live ownership, no allocation failure, equal allocation/free totals
-107,609,256 bytes. Receipt: `/tmp/opforge-selfhost-index-full-20261013.log`.
-
-The package-member preparation repair uses existing numeric `MemberBinding`
-metadata to distinguish syntax facets from shared value members during acquisition.
-EXVM leaves the transient facet as an enclosing delimiter; preparation validates
-and strips it while preserving the existing numeric operand wrapper. Field meaning
-remains package-owned. The 15-case fresh native matrix has 11 exact positive
-artifacts and four expected rejections, including disabled telemetry calls,
-absolute widths, parenthesized bases and ordinary struct members. This focused
-proof fixes the identified instruction but does not establish full self-hosting.
-The unchanged release control takes 41.933110667 seconds before and
-41.867839750 after (-0.16%, one pair), with 660 more executable bytes and 652
-more linked bytes. Separate telemetry changes tracked peak from 1,240,696 to
-1,240,712 bytes (+16); allocation/free totals both rise 16 bytes and live
-ownership remains zero. Receipt: `/tmp/opforge-member-syntax-cost-20261013.json`.
-The existing full-extension tuple variation still rejects `4.W` at line 8 in
-both saved pre-repair and candidate images. That separate nested-member gap
-remains pending; the absolute-member repair does not qualify all nested forms.
-The subsequent full current-source run completed natively with exact live Rust
-Hunk equality. Its phase/memory instrumentation reports 2,329.72 seconds in
-preparation and 1,241.58 seconds in assembly. Full-run peak grows 32,784 bytes
-relative to the preceding incomplete run, whose source differs; those totals do
-not measure this repair’s separate performance impact. The unchanged-input control
-above does. Current complete receipt:
-`/tmp/opforge-selfhost-member-capture-20261013/selfhost-summary.json`.
-
-Correctness requires fresh component comparison, unchanged local and cross-module
-fixtures, malformed/ambiguous invocations and existing macro controls. Measure the
-unchanged release control and a separate instrumented heap run against the saved
-BS37 image/package before claiming the integrated cost. Keep current-module and
-graph-changing source acquisition boundaries explicit.
-
-1. Use the complete current opcore audit to choose the next structural language
-   gap. Known candidates include statement signatures/expansion, metadata,
-   linker output policies and sparse output. Keep CPU-specific failures in their
-   family owners rather than retargeting examples.
-2. Complete source/session gaps: actual assembly-context-dependent acquisition,
-   runtime graph changes and unresolved dynamic binding ownership. Preserve
-   strict unavailable-value rejection and numeric origin/cursor contracts.
-3. Complete the separately approved one-current-v1 consolidation for each VM;
-   remove native version fields, parameters and dispatch while retaining package
-   integrity and bounds checks. The expanded match program does not fulfil that
-   migration.
-
-Each coherent outcome needs fresh positive and negative native controls, separate
-release and memory measurements, and a review of numeric execution ownership.
-Keep new responsibilities out of the already large frontend. Continue shared
-language work before CPU families when parity implementation resumes.
+The maintained AmigaOS assembler starts at
+[`main.asm`](../../native/motorola68000/amigaos/main.asm), selects `.cpu 68020`
+and declares `build/opforge` as its Hunk output. It is the promoted product;
+complete Rust language, CPU-family and output parity remain unqualified.
+
+Deploy `opforge` beside `packages/`. CPU packages load from disk by default;
+embedding selected packages is an explicit build option. The Rust host generates
+those packages through the shared hierarchy model and
+[`native_runtime_package.rs`](../../crates/opforge-asm/src/native_runtime_package.rs).
+Native self-hosting rebuilds the assembler executable using a prebuilt package;
+it does not regenerate the package toolchain on Amiga.
+
+`opforge src` reads `src/main.asm`, honoring source `.cpu` and `.output`
+declarations. The root file's directory supplies default module/include roots;
+additional `-M`/`-I` paths extend them. Ordinary CLI builds create bounded scratch
+in working-directory `build/scratch` and reuse one persistent `build/ofm` object
+set. `--capture-dir`, `--incremental-dir` and `--rebuild` override the corresponding
+storage/rebuild choices. Product debug includes resolve relative to their files.
+See the [native guide](../../native/README.md) for build and hardware commands.
+
+The latest full bare-CLI proof, dated **2026-10-23**, uses source manifest
+`fnv1a64:51307e75736f84bd`: 278 inputs / 2,949,110 bytes. Under the established
+8 MiB installed-Workbench/plain-background FS-UAE setup and 64 KiB stack,
+`opforge src --rebuild` completes cold in **279 s** and `opforge src` completes
+warm in **58 s**. Both exit zero and produce the complete **348,824-byte Hunk**
+exactly matching live Rust and the bootstrap. Cold rebuilds all 190 dependency
+modules; warm reuses all 190. The separate m68020 package is 478,042 bytes.
+
+This proves completion in that 8 MiB setup, with unrestricted emulator CPU speed.
+Peak heap was not remeasured; neither physical 68020 timing nor 2 MiB fit follows.
+The engineering budget is **6.5 MiB process / 1.5 MiB OS**; the current pair does
+not independently remeasure that process split. The preceding 348,752-byte
+external-package snapshot passed A6000 cold/warm in **1,066/90 s**, with
+unrestricted hardware RAM. The current bare-CLI bundle awaits hardware testing.
+Exact identities, earlier qualified memory figures and retained performance
+comparisons live in [runtime and memory status](native-performance-diagnosis.md).
+Different source snapshots and machines are not an isolated speed comparison.
+
+The last promotion-era ASM unit batch excluded the known
+`examples_match_reference_outputs` listing mismatch: implicit module wrappers
+appear in current listings but not the checked MOS listing. Older broad Rust
+failure counts are not a current result. Full Rust quality-gate readiness remains
+unqualified, and pre-existing native redundant-test findings need review.
+The audited-source inventory check also has stale source snapshots and assumes
+bare telemetry include paths; current production includes are relative. Its
+readiness requires a reviewed checker/inventory repair rather than a blanket pin
+refresh.
+
+## Implemented responsibilities and covered subsets
+
+These are implemented boundaries with focused proof, not whole-area parity claims.
+
+| Area | Current responsibility and covered behavior |
+| --- | --- |
+| Source representation | TKVM tokenizes physical input; retained numeric captures and packed records drive replay. Original text is not re-tokenized on assembler passes. VM-selected lexical recipes preserve macro/statement substitutions and diagnostic provenance. |
+| Expressions and values | Shared EXVM owns grammar. Numeric preparation and ExprVM handle supported scalar/typed values, lists/ranges, structs, nominal members and certified immutable forward dependencies. Layout aliases retain relocation provenance. |
+| Controls | Shared PRVM plans drive conditionals, match arms and counted/iterable/while controls. Executed declaration ownership, iteration snapshots and named acquired collections have focused two-package controls. Preparation-known acquisition is distinct from assembly-state-dependent acquisition. |
+| Templates and statements | Shared signature compilation, typed matching, head selection and existing packed template cursors support direct, imported and expanded invocations, caller labels, lexical substitutions and declaration-relative provenance. |
+| Modules | Discovery/order, aliases, selected names, typed `with` snapshots and stored interfaces have focused coverage. Values evaluate at the importing site and must be known there. Selection controls visibility; whole referenced `.block` units retain internal labels and fall-through. |
+| Includes and assets | Inactive/unexpanded statements do not open files. Active includes preserve parent cursors, declaration origins and definition-relative paths. Static child streams can contribute modules and `.use` edges before graph ordering. |
+| Text encoding | The shared text registry, directive/emitter path and ExprVM string provider have connected proof: 24 exact positive artifacts and 28 diagnostic rejections across 6502/68020. This supersedes the earlier component-only integration gap; wider text/language parity remains unqualified. |
+| Data and layout | Generic data/reservation directives remain shared core behavior. Numeric spans support sparse forward/backward `.org`, later-write overwrite, initialized payloads and independent BSS geometry. Placed/mapped sections preserve address provenance. |
+| Metadata and output | Dotted fields, metadata blocks and target overlays share numeric plans and output owners. BIN/FILL vectors are preflighted before opening output files. Bin, Hex, S-record and streamed Hunk paths have focused exact controls. |
+| Module storage | Eligible dependency modules publish pointer-free `.ofm` code/data, relocations and assembly interfaces; consumers demand stored entities. Producer storage retires after publication. The root stays in the shared final driver. |
+| Incremental reuse | Timestamp/size freshness, tool/package/configuration identity and dependency generations guard reuse. Cold and warm linking use the same persistent objects; unchanged hits do not rewrite them. |
+
+CPU/family/dialect semantics remain package-owned. Generic directives must not
+fall through to instruction encoding. Full-family support requires the registered
+pipeline and unchanged-source corpus, not a few representative encodings.
+
+## Remaining parity and qualification gaps
+
+### Whole-corpus evidence
+
+The last complete frozen **86-root opcore audit** recorded **38 positive roots
+with exact live Rust/reference artifacts**, **36 expected diagnostic rejections**
+and **12 positive failures**. Rejection proof did not establish exact diagnostic
+text parity. That audit predates later metadata repairs, promotion and storage
+work; it is not a current-build coverage total.
+
+Its unresolved fixture checklist was:
+
+- `cli_json_outputs` and `expr_syntax` (the latter exposed mixed CPU phases).
+- `linker_regions_full`, `linker_regions_minimal`, `linker_regions_no_dsection`
+  and `linker_regions_pack_no_dsection`.
+- `macro_syntax`.
+- `module_metadata_block`, `module_metadata_output` and `module_metadata_outputs`.
+- `statement_capture_types` and `statement_signatures`, localized after successful
+  preparation to the missing 8085 structured no-operand candidate.
+
+Later focused metadata and statement proofs qualify their named cases, not a new
+whole-corpus result. Rerun unchanged roots against current live Rust before
+updating this inventory; preserve original CPUs and examples. Historical failure
+groups are not automatically established causes or current failing counts.
+
+### Structural and language boundaries
+
+- **Actual-state source acquisition:** guards depending on PC, instruction sizes
+  or placement still need growing-source publication and a resumable assembly
+  context. Frozen sessions reject changed record/context views. Preparation must
+  not invent provisional assembly values. Runtime/expanded acquisition that
+  introduces module or `.use` graph changes remains unsupported. Preparation-only
+  effects inside retained match envelopes still need qualification.
+- **Package phases:** sequential mixed `.cpu` contexts need a common numeric
+  identity domain, atomic activation and retained lexical/execution contexts.
+  Exchanging a package pointer would collide local IDs. Catalog/seeded-lowering
+  experiments are host evidence only; they do not implement native activation.
+  Keep grammars separate and package selection explicit. Initial target bootstrap
+  scans the root preamble while skipping includes and conditional bodies; an
+  encountered template definition inside a skipped conditional is still a
+  conservative selection barrier.
+- **Conditional/member ownership:** different-owner forward compound prefixes,
+  mutable/contextual dependencies, additional guard-activation chains and later
+  count-expanded declarations remain restricted. Preserve strict unavailable-value
+  rejection, inactive alternatives and nominal schema identity.
+- **Templates:** the residual decoded-string body fallback in
+  `templates.rewriteCallText` still needs explicit VM-selected recipes. An operand
+  such as `lea .block,a0` in an unexpanded macro can be misclassified as a labeled
+  directive; the telemetry wrapper's renamed formal is a workaround, not a grammar
+  repair. Named blocks in anonymous macro scopes and broader loop/macro behavior
+  still require complete qualification.
+- **Expressions and addresses:** supported one-base-plus-absolute-addend fixups do
+  not cover multi-base/non-affine algebra or compound symbolic-address cells.
+  Unsupported relocation forms must reject without losing provenance. Preparation
+  expression-range/operand-wrapper policy and Rust's spelling-based expression
+  path need a shared grammar/metadata audit.
+- **CLI, metadata and outputs:** JSON/listing parity, LIST metadata, dynamic
+  metadata values and source-context-dependent execution remain open. Connected
+  origins at/above `$80000000` and terminal-PC overflow are not qualified merely
+  because the standalone flat writer covers inclusive `$ffffffff`. Requalify the
+  linker/output-policy fixture group and metadata-selected geometry.
+- **Instruction-family cases:** the 8085 no-operand candidate, unchanged-source
+  CAS2 colon-pair normalization, Motorola absolute-to-absolute byte/word MOVE,
+  nested full-extension `4.W` members and bounded extra call projections remain
+  reported gaps or incomplete coverage. Full FPU/MMU/AMMX/Apollo support cannot
+  be inferred from focused FPU/full-extension/PFLUSH controls.
+- **VM contracts:** consolidate each VM's current capabilities into its own v1,
+  separating semantic kind from version. Migrate producers/codecs/executors
+  together, remove superseded formats and native version fields/checks/dispatch,
+  and retain package/container integrity and bounds checks. Current BS38 statement
+  programs do not by themselves complete this migration.
+
+The detailed [source-session design](native-source-execution.md),
+[frontend boundary reference](compact-frontend-vm-boundary.md) and
+[VM consolidation specification](native-vm-consolidation.md) describe these
+boundaries. Older fixture/measurement paragraphs in those references retain their
+own snapshot scope; this page owns the completion inventory.
+
+## Completion order and next steps
+
+Parity implementation remains paused pending the next assignment. This document
+records the agreed completion order; it does not activate implementation work.
+
+1. Finish cleanup of current contracts and supporting tooling. Keep the frontend
+   refactoring separate: its combined acquisition, binding and preparation
+   responsibilities need explicit ownership, not mechanical file splitting.
+2. Before resuming parity, re-establish a current host/corpus baseline, triage Rust
+   failures first, and select a coherent shared-opcore gap from the table above.
+   Complete source/session, template, expression, output and VM-contract gaps
+   without adding grammar or target semantics to generic native shortcuts.
+3. Qualify shared opcore, then CPU families in the agreed order: **6502; 68000
+   including FPU, MMU, AMMX, 68080/Apollo extensions; i8080; RISC-V; 6809**.
+4. Qualify representative multi-module and macro-heavy projects, diagnostics,
+   the supported CLI/output matrix and the intended AmigaOS/hardware floor.
+   Keep resource-fit qualification separate from language/family completeness.
+
+The latest baseline's hardware verification and a fresh separate peak-memory run
+are still useful follow-ups. Optimization candidates require measured work and
+unchanged-input comparisons; retained decisions and rejected approaches are in
+[the performance reference](native-performance-diagnosis.md#enduring-earlier-decisions).
 
 ## Complete and qualify a slice
 
-Use current live Rust oracles, fresh case-bound guest completion, explicit exit
-status and exact complete outputs. Timeouts, crashes, partial captures and launcher
-success are failures. Keep positive and negative controls; distinguish rejection
-from exact diagnostic parity. Focused tests, package generation and historical
-corpus snapshots do not establish whole-language or family parity.
+Use live Rust oracles, fresh case-bound completion, explicit exit status and exact
+complete outputs, following the
+[native parity contract](../../agents/rules/native-rust-parity-porting.md).
+Timeouts, crashes, partial captures and launcher success are not completion.
+Expected rejection is distinct from exact diagnostic parity. Component proof and
+historical corpus counts do not establish whole-language or family parity.
 
-Before each coherent production change, identify unchanged input/settings and
-record release-time, executable and linked-storage impact. Use separate
-instrumented runs for phase/heap evidence; static storage is not peak RAM. Keep
-cache in `target` only during an active batch, preserve needed diagnostics outside
-it, and coordinate `make clean` after active builds/native runs finish.
+Record reproducible release timing, executable/static storage and separate
+instrumented heap evidence when qualifying behavior or performance changes.
+Static reservation is not peak RAM. Keep benchmarks representative beyond
+self-hosting, including small multi-module and macro-heavy workloads. Run focused
+checks during development and broad host/corpus/full-self-host checks at relevant
+completion boundaries. Preserve reference paths while evaluating replacements;
+remove superseded experiments after decisions. Keep `target` only for active
+batches, preserve needed deliverables outside it and clean after active work ends.
 
-Claim opcore complete only after source acquisition, macros/statements,
-expressions, data/layout, modules/parameters, CLI/output, diagnostics and VM
-contract gaps are qualified against current Rust behavior. Rerun complete
-unchanged corpus roots and fresh full current-source self-host at that boundary,
-and review combined responsibility boundaries. Then qualify each CPU family in
-the stated order, including registered pipelines and current examples. Complete native parity qualification needs the full language/target/CLI matrix, representative
-multi-module projects, useful diagnostics and honest resource requirements.
-Qualify the 68020/AmigaOS floor and 2 MiB product goal separately from the 74 MiB
-emulator result. Commit coherent recovery points; pushes require explicit authorization.
+Claim complete opcore only after acquisition, templates/statements, expressions,
+data/layout, modules/parameters, CLI/output, diagnostics and VM-contract gaps are
+qualified against current Rust. Require full unchanged corpus and fresh complete
+current-source self-host at that boundary. The 8 MiB desktop proof and original
+2 MiB goal are separate; current peak accounting must not be inferred from older
+snapshots. Commits are recovery points; remote pushes require explicit authority.
 
 ## Maintained documentation owners
 
-- [Compact frontend boundary](compact-frontend-vm-boundary.md): implemented subsets,
-  explicit limits and identified self-host proof.
-- [Native source execution](native-source-execution.md): source-session responsibilities and remaining work.
-- [Native VM consolidation](native-vm-consolidation.md): contract migration and limits.
-- [Package execution boundaries](package-execution-boundaries.md): shared directive
-  and package responsibility boundaries.
-- [Native guide](../../native/README.md) and [reference manual](../opForge-reference-manual.md):
-  invocation and user behavior.
-- [VM efficiency](../performance/vm-efficiency.md): measurement procedure and evidence.
-- [Native parity contract](../../agents/rules/native-rust-parity-porting.md): fresh-run proof.
+- This page: current product status, parity evidence/limits and completion order.
+- [Runtime and memory](native-performance-diagnosis.md): identified measurements,
+  resource limits and retained performance decisions.
+- [Module interfaces](native-module-interfaces.md): numeric assembly interfaces,
+  incremental invalidation, bounded consumers and publication.
+- [Per-module objects](native-fragment-preparation.md): linker payload lifecycle,
+  relocation proofs, naming and rollback ownership.
+- [Capture and preparation](native-lazy-preparation.md): storage policies,
+  configuration/source suspension and owner retirement.
+- [Source execution](native-source-execution.md),
+  [frontend boundaries](compact-frontend-vm-boundary.md),
+  [VM consolidation](native-vm-consolidation.md) and
+  [package/shared-directive boundaries](package-execution-boundaries.md): their
+  specialized contracts and open designs.
+- [Native guide](../../native/README.md) and
+  [reference manual](../opForge-reference-manual.md): invocation and user behavior.
+- [Performance procedure](../performance/vm-efficiency.md) and
+  [FS-UAE setup](../../agents/rules/fs-uae.md): measurement and execution safeguards.
 
-This page owns current status and completion order. Git history retains superseded
-checkpoint chronology, experiments and measurements; no historical checkpoint
-anchors or archive tree are maintained here.
+Git history retains superseded experiment chronology; no archive tree is maintained.

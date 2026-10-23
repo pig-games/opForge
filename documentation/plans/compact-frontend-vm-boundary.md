@@ -1,13 +1,14 @@
 # Compact frontend: VM boundary correction
 
-Status: the compact-header source (`fnv1a64:95994e5a743c73e9`) completes a full
-embedded-m68020 release self-host on FS-UAE in 100.5940835 seconds, with exact
+Earlier frontend evidence: the compact-header source (`fnv1a64:95994e5a743c73e9`)
+completes a full embedded-m68020 release self-host on FS-UAE in 100.5940835 seconds, with exact
 complete fresh Rust Hunk equality. The comparison uses expanded-memory 68040;
 the header change has not yet run on physical A6000 hardware. Separate full
 unchanged-input accounting measures 46,997,384 tracked peak heap bytes.
-The current [8 MiB product budget](native-performance-diagnosis.md) and complete
-opcore/CPU-family parity remain open. These older expanded-memory results do not
-establish fit under that budget.
+Current product fit, identified measurements and memory-budget limits are in
+[runtime and memory status](native-performance-diagnosis.md); complete
+opcore/CPU-family parity remains open. These older expanded-memory results do not
+establish the current build's resource use.
 
 Rust has one consolidated EXVM v1 grammar/executor. Native preparation executes
 it over bound numeric tokens and lowers a transient offset-based tree to ExprVM

@@ -590,7 +590,7 @@ unbalanced ownership invalidate the report. The
 [decoder](../../scripts/performance/capture_lifetime_audit.py) reconciles it with
 MEMD, capture composition/growth and L1/work inventory. Native completion and
 exact Rust output remain separate requirements. See the
-[investigation](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement)
+[capture lifetime contract](../plans/native-lazy-preparation.md#capture-acquisition-and-retirement)
 for current scope and lifetime caveats; historical overhead measurements are in Git.
 
 ## Sampled native routine hotspots
@@ -776,7 +776,7 @@ bounded phase seed are configurable. No sampled window means no time estimate.
 Sample extrapolation includes instrumentation and may alias workload structure;
 it establishes neither release cost nor avoidable work. Measure counter-only
 release overhead and memory overhead separately on identical inputs. See the
-[investigation and results](../plans/native-lazy-preparation.md).
+[preparation ownership reference](../plans/native-lazy-preparation.md).
 
 ## Event ABI
 

@@ -4,12 +4,12 @@ Status: named preparation-known acquisition and the private frozen-input assembl
 lifecycle have focused native proof. Growing-source execution remains a design
 target.
 The [completion plan](native-runtime-reset.md) records current evidence and completion order.
-The revised [fragment and lazy-preparation plan](native-fragment-preparation.md)
-records the current design investigation and proposed foundation. Its first
-experiment preserves the frozen lifecycle; it does not enable growing-source execution.
-The [lazy-preparation design](native-lazy-preparation.md) separates source-occurrence
-inventory from final symbol publication and keeps its first candidate before
-`beginSizing`. It does not relax the growing-session requirements below.
+The [module object contract](native-fragment-preparation.md) and
+[capture/retirement reference](native-lazy-preparation.md) describe maintained
+storage and publication. That storage is distinct from growing-source execution;
+it does not relax the requirements below. Measurement and corpus paragraphs
+here identify earlier source snapshots; current product fit and parity status
+are owned by the completion plan.
 
 The 2026-10-12 frozen static-acquisition image completed all 86 unchanged opcore
 roots: 32 positive roots matched every requested Rust artifact exactly, 36

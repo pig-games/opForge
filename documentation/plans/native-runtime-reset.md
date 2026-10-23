@@ -45,10 +45,10 @@ The last promotion-era ASM unit batch excluded the known
 appear in current listings but not the checked MOS listing. Older broad Rust
 failure counts are not a current result. Full Rust quality-gate readiness remains
 unqualified, and pre-existing native redundant-test findings need review.
-The audited-source inventory check also has stale source snapshots and assumes
-bare telemetry include paths; current production includes are relative. Its
-readiness requires a reviewed checker/inventory repair rather than a blanket pin
-refresh.
+The [audited-source inventory](../architecture/native-runtime-boundary-inventory-v0_1.md)
+now covers relative and nested literal helper includes alongside the reviewed
+module sources. Its checker and workflow tests pass; this structural review does
+not resolve the broader qualification gaps above.
 
 ## Implemented responsibilities and covered subsets
 

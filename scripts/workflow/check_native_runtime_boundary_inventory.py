@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import re
 import sys
@@ -354,150 +355,267 @@ TARGETS = {'opforge.assembler.driver': ('native/motorola68000/amigaos/assembler/
                         'opforge.cli.arguments',
                         'opforge.cli.input',
                         'opforge.cli.target'))}
-SNAPSHOTS = {'opforge.assembler.driver': ('182a79f8adceb0fd24566ad5b509f0537a4cdfccb50f9ce788b5b77517e2ca12',
-                              22,
-                              66,
-                              ('code', 'data', 'bss', 'bss'),
-                              26),
- 'opforge.assembler.prepare.frontend': ('37390af7a6fd5473b75d00cd8b8a1ff7c056ca3e0449d20c0f494e7f954ae732',
-                                        89,
-                                        46,
+# Reviewed source closures, not an automatically accepted refresh baseline.
+# Each digest covers the ordered repository-relative file names and full texts.
+# Counts summarize static definitions; all gates are included, macros unexpanded.
+SNAPSHOTS = {'opforge.assembler.driver': ('19b0daddb8c703fbf3771600528b0736e5230cf5f1358f9801979c6c209191b1',
+                              185,
+                              74,
+                              ('code',
+                               'data',
+                               'bss',
+                               'bss',
+                               'bss',
+                               'code',
+                               'bss',
+                               'code',
+                               'bss',
+                               'code',
+                               'bss',
+                               'data',
+                               'code',
+                               'data',
+                               'code'),
+                              195),
+ 'opforge.assembler.prepare.frontend': ('ace3cc85c9d82f68fc43b1fb6bb7b25159d7e73a7960af4f5299f33fcb522071',
+                                        96,
+                                        52,
                                         ('bss', 'code', 'data', 'bss'),
-                                        115),
- 'opforge.assembler.prepare.prepare': ('e9ec85765e3843bb31380885bcf286df94bc5d5cc1fda3abd08c7dd5a3af8720',
+                                        155),
+ 'opforge.assembler.prepare.prepare': ('e4b63ae85852e9c30f763911a0f7bc99ec6586e9e50670000d2330ea7b5bb556',
                                        13,
                                        12,
                                        ('code', 'bss'),
                                        4),
- 'opforge.assembler.prepare.operand_binding': ('75bcbfea65db9b7a25c43a47c3ab626cc9945bc3ccef236293addc8eb44ae017',
+ 'opforge.assembler.prepare.operand_binding': ('1803e055988f07884ccdb792394643851d0b0006f49bfe1e41c482188014b2e6',
                                                18,
                                                8,
                                                ('code',),
-                                               33),
- 'opforge.assembler.prepare.expression': ('152eee5f64c56f461ac52268811407bdb34705b9d6e073aaa82f5f85a78d6811',
+                                               37),
+ 'opforge.assembler.prepare.expression': ('c44fc63767a5b1312bd9d4fb0412526ad7bb64609f02a53aaaa628a257ce956a',
                                           19,
-                                          12,
+                                          14,
                                           ('code', 'bss'),
-                                          34),
- 'opforge.assembler.prepare.data': ('92018ae4221a841dac251d048700f60426756541568f1f2122399d2a37a0cc06',
+                                          55),
+ 'opforge.assembler.prepare.data': ('c31ca6f82213eb4289acd1d23346eb53d4e2fa61a466ef44c4bf11f78fee7dc2',
                                     1,
                                     8,
                                     ('code', 'bss'),
                                     1),
- 'opforge.assembler.layout.assembly': ('135b1609e2d095f47eabeada7d9fb483facf90d94958752e94b923b2345a72d7',
-                                       18,
-                                       30,
+ 'opforge.assembler.layout.assembly': ('8528701a5ff9ab6028dee6305f567691fdb36d0882e85c6d7fbdb2fa11ac6f16',
+                                       23,
+                                       31,
                                        ('bss', 'code'),
-                                       21),
- 'opforge.assembler.layout.encoding': ('d92ac66027640e3f61024c9e8efb6de7d2da90c9bb6a1e4efe41d59f0d7946e9',
+                                       39),
+ 'opforge.assembler.layout.encoding': ('951927b9566350530e76b542e381318bb90ee446a83a0d557446f163b9e00dcb',
                                        63,
-                                       17,
+                                       18,
                                        ('bss', 'code'),
-                                       25),
- 'opforge.assembler.layout.dependencies': ('4821a380a050e819a8d026e4ce7b5c3ca83baa9d64639be995c9fe6b56568b9f',
+                                       42),
+ 'opforge.assembler.layout.dependencies': ('1df2100efda54726c18e2cf752e18455c1def0af5cc114333df3d3a4c93459cc',
                                            16,
                                            16,
                                            ('bss', 'code'),
-                                           13),
- 'opforge.assembler.layout.sections': ('3161af736fde457aa24612167efaefcfdd11a5c540c630fb39b7897cd0f60484',
+                                           17),
+ 'opforge.assembler.layout.sections': ('045cea456b37f31d5b8cff2ba3b6568f440f8224ba8604c9b45e0e487f2cefa9',
                                        13,
                                        2,
                                        ('code',),
                                        9),
- 'opforge.assembler.source.control': ('84bafe44fe7379010121960c37af2a618a453022501ca51be46fe3e08feb7c64',
+ 'opforge.assembler.source.control': ('6bfc6727c1e78493210985e50a39b61f7bf1c3e3b4b047bc23b1e6d878701ac6',
                                       16,
                                       11,
                                       ('code', 'bss'),
                                       5),
- 'opforge.assembler.language.statement_execution': ('4789cf90b657d68c38cdeb66650634f435f66dfc9d978f1dfd1163965abdb40a',
-                                                    3,
-                                                    11,
+ 'opforge.assembler.language.statement_execution': ('35aee1f2b0aebfb068c9bf331ec698b9a9741fa69e3c8a0f98790a5cc44ac2e5',
+                                                    8,
+                                                    12,
                                                     ('bss', 'code'),
-                                                    2),
- 'opforge.assembler.modules.provider': ('684ff9e83cfdd48a09a6f31d017b87511f6440fc6d077dcabe43399df7ca4112',
-                                        21,
+                                                    16),
+ 'opforge.assembler.modules.provider': ('3aa997548c1aa944246c5e497b5dc1d8f5bb256c6e59fc0282151f6420f853ef',
+                                        27,
                                         18,
                                         ('code',),
-                                        14),
- 'opforge.assembler.output.plan': ('4f450ad406a34c43fd3ac459fd46e80e99362e19f30376968ea2c034a71f8340',
+                                        17),
+ 'opforge.assembler.output.plan': ('b73e8fc74c043277116243b24cac922bfd8350c8e78b073e38d2628e3f40c391',
                                    2,
                                    1,
                                    ('code',),
                                    1),
- 'opforge.assembler.output.hunk_image': ('bade50040b0d28e81274ff80c639f63a58df585e37ccf5bf041f1f7d3a3173e4',
+ 'opforge.assembler.output.hunk_image': ('2f0cffda4deaa4f6ccaa339f261ca9f743a4ac0e0f6fe0bf2dbdbdb61f44070c',
                                          4,
                                          0,
                                          ('code',),
                                          9),
- 'opforge.packages.loader': ('6422624f63532c258608f55ca805914b8d7e19dcfd55967a13ebb4970c86a3aa',
+ 'opforge.packages.loader': ('6487ae03a826be7115db79a934981e943d3620dfc0c355810c546774efbe912b',
                              4,
-                             4,
+                             5,
                              ('code', 'bss'),
-                             5),
- 'opforge.packages.validation': ('4e1f2063b2cd6264a4540a22744a5bac064d71bb3c1bfacae4e483dda5d65481',
+                             18),
+ 'opforge.packages.validation': ('058758ec69bf15b5f6ce5f0231b2ee3977ca596fe32fa77a2cc6d3f8f5367d6f',
                                  5,
                                  11,
                                  ('code',),
                                  3),
- 'opforge.vm.exvm.runtime': ('6251c7beb77221882c069dd71a38a29d774fbeb269538a2e530bf529ae2bf67b',
+ 'opforge.vm.exvm.runtime': ('c2a60578ef92de6753f5d944319e1ecc7b8b87b5d8fc5d9ea7eed160ce49c5e9',
                              14,
-                             3,
+                             4,
                              ('code', 'data'),
-                             59),
- 'opforge.vm.exprvm.runtime': ('e0fc869a43cd0428a660e115bf26b589862654091782ee71f11192c4bb10a1eb',
+                             66),
+ 'opforge.vm.exprvm.runtime': ('c9f13c37b088a8c16aad8acd122e4923f8fd0bf7fff3010ae5384e5aa6109bec',
                                13,
                                2,
                                ('code', 'bss'),
-                               2),
- 'opforge.vm.exprvm.i64_math': ('9dd0b8e9b12771717688782e891676f2292c8208b4d5dec0d6784b0d4b832c75',
+                               6),
+ 'opforge.vm.exprvm.i64_math': ('4687693b54bb682fe512ced3f588b5fa689a2f3ae27b629e90a66636f7949269',
                                 4,
                                 0,
                                 ('code',),
                                 0),
- 'opforge.vm.prvm.runtime': ('5990df6d17e8ea5a976df1547766abefbf3bacaffab00a626299eca671e587b8',
+ 'opforge.vm.prvm.runtime': ('e99dd24fa86f13597f1a4f07d57d85405555cccab3a985824812df26f8890766',
                              24,
                              3,
                              ('data', 'code'),
-                             26),
- 'opforge.vm.tkvm.runtime': ('18c59d42611ea9d4dbc9bbccd6a450660e3e52b98f60197c433252380c1fb9dc',
-                             1,
-                             4,
+                             30),
+ 'opforge.vm.tkvm.runtime': ('6e0a18cc8da48023966adbca7a32fa444bc28bd96674f6bd5f1ef619a46d38c6',
+                             7,
+                             5,
                              ('code',),
-                             23),
- 'opforge.vm.encoding.runtime': ('249443dff2cae949dad1847513db173ac34015357099888fdd31f61b4710bee7',
-                                 21,
+                             43),
+ 'opforge.vm.encoding.runtime': ('42cbb47b3172f020f9359fa57f187c686c558ac0a3493c82114044629de300bd',
+                                 23,
                                  1,
                                  ('data', 'code'),
-                                 10),
- 'opforge.vm.value.runtime': ('ce9d227b66f56f90217401add84f1993dc67648c6c2ae461792ea4a966eee6f9',
+                                 15),
+ 'opforge.vm.value.runtime': ('9a047bf090569560009d98e9458906764b055f313ee1aa53903fae358be4f0bb',
                               2,
                               1,
                               ('code',),
-                              0),
- 'opforge.cli.entry': ('4e9a5cfd8382858eb95925300cb6e73bb3da9373d892f7ecf9b2e83e7b2a4f1d',
+                              4),
+ 'opforge.cli.entry': ('673f7f8109448d9fbfcdd58ccbd9552c2aa6e36917e080461e8d1860b929c2f6',
                        2,
                        4,
                        ('code', 'data', 'bss'),
                        12)}
 
 
-def extract_inventory(source_text: str, root: Path = ROOT) -> tuple[list[str], list[str], list[str], list[str]]:
-    """Extract the complete static ownership surface from one assembly module."""
-    blocks = re.findall(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", source_text, re.MULTILINE)
-    imports = re.findall(r"^\s*\.use\s+([^\s;]+)", source_text, re.MULTILINE)
-    # Telemetry owns its conditional imports so call sites stay declarative.
-    # Include those dependencies without mistaking macro bodies for routines.
-    if re.search(r'^\s*\.include "telemetry_macros\.i"', source_text, re.MULTILINE):
-        telemetry = root / "native/motorola68000/amigaos/debug/telemetry_macros.i"
-        if telemetry.exists():
-            imports.extend(re.findall(r"^\s*\.use\s+([^\s;]+)", telemetry.read_text(), re.MULTILINE))
-    sections = re.findall(r"^\s*\.section\s+([^,\s]+)", source_text, re.MULTILINE)
-    diagnostics = [
-        f"{line_number}: {line.strip()}"
-        for line_number, line in enumerate(source_text.splitlines(), start=1)
-        if re.search(r"(?:diag|debug|error|event|status)", line, re.IGNORECASE)
-    ]
+@dataclass
+class SourceSurface:
+    """Unique literal source files owned by one module, in traversal order."""
+
+    sources: dict[str, str]
+    blocks: list[str]
+    imports: list[str]
+    sections: list[str]
+    diagnostics: list[str]
+
+    def snapshot(self) -> tuple[str, int, int, tuple[str, ...], int]:
+        digest = hashlib.sha256()
+        for path, text in self.sources.items():
+            digest.update(path.encode() + b"\0" + text.encode() + b"\0")
+        return (digest.hexdigest(), len(self.blocks), len(self.imports),
+                tuple(self.sections), len(self.diagnostics))
+
+
+def extract_inventory(source_text: str) -> tuple[list[str], list[str], list[str], list[str]]:
+    """Static definitions, including both conditional arms; not assembled output.
+
+    Macro bodies are hashed but are not module routines/imports/sections. Their
+    dependencies are covered by the source hash, not simulated expansion.
+    Diagnostic matches are lexical review hints, not reachable error paths.
+    """
+    blocks, imports, sections, diagnostics = [], [], [], []
+    macro_depth = 0
+    for number, line in enumerate(source_text.splitlines(), 1):
+        if re.search(r"(?:diag|debug|error|event|status)", line, re.IGNORECASE):
+            diagnostics.append(f"{number}: {line.strip()}")
+        if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line):
+            macro_depth += 1
+        elif re.match(r"^\s*\.endmacro\b", line):
+            macro_depth -= 1
+            if macro_depth < 0:
+                raise ValueError("unmatched .endmacro")
+        elif not macro_depth:
+            match = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)\s+\.block\b", line)
+            if match:
+                blocks.append(match[1])
+            match = re.match(r"^\s*\.use\s+([^\s;]+)", line)
+            if match:
+                imports.append(match[1])
+            match = re.match(r"^\s*\.section\s+([^,\s]+)", line)
+            if match:
+                sections.append(match[1])
+    if macro_depth:
+        raise ValueError("unclosed .macro")
     return blocks, imports, sections, diagnostics
+
+
+def source_surface(relative: str, root: Path = ROOT) -> SourceSurface:
+    """Follow literal includes relative to their including file, fail closed.
+
+    Both conditional arms are covered; template-local includes require review.
+    Files are inventoried once per module; this describes ownership, not include
+    execution counts. Dynamic includes need an explicit audit design, not a
+    silent omission. Imported modules retain their own ownership boundaries.
+    """
+    surface = SourceSurface({}, [], [], [], [])
+    active: list[str] = []
+    root = root.resolve()
+
+    def visit(path: Path) -> None:
+        path = path.resolve()
+        try:
+            name = path.relative_to(root).as_posix()
+        except ValueError as error:
+            raise ValueError(f"include outside repository: {path}") from error
+        if name in active:
+            raise ValueError("include cycle: " + " -> ".join(active + [name]))
+        if name in surface.sources:
+            return
+        if not path.is_file():
+            raise ValueError(f"missing source/include: {name}")
+        text = path.read_text(encoding="utf-8")
+        surface.sources[name] = text
+        blocks, imports, sections, diagnostics = extract_inventory(text)
+        surface.blocks.extend(blocks)
+        surface.imports.extend(imports)
+        surface.sections.extend(sections)
+        surface.diagnostics.extend(f"{name}:{item}" for item in diagnostics)
+        active.append(name)
+        macro_depth = 0
+        for number, line in enumerate(text.splitlines(), 1):
+            if re.match(r"^\s*[A-Za-z_][A-Za-z0-9_]*\s+\.macro\b", line):
+                macro_depth += 1
+            elif re.match(r"^\s*\.endmacro\b", line):
+                macro_depth -= 1
+            if not re.match(r"^\s*\.include\b", line):
+                continue
+            if macro_depth:
+                raise ValueError(f"{name}:{number}: template-local include needs explicit audit")
+            match = re.fullmatch(r'\s*\.include\s+"([^"\n]+)"\s*(?:;.*)?', line)
+            if not match:
+                raise ValueError(f"{name}:{number}: unsupported nonliteral include")
+            visit(path.parent / match[1])
+        active.pop()
+
+    visit(root / relative)
+    surface.imports = list(dict.fromkeys(surface.imports))
+    return surface
+
+
+def inventory_section(module: str, relative: str, entry: str, surface: SourceSurface) -> str:
+    """Canonical reviewed facts; prose about responsibilities stays in the intro."""
+    def names(items: list[str]) -> str:
+        return ", ".join(f"`{item}`" for item in items) if items else "(none)"
+
+    includes = list(surface.sources)[1:]
+    return (f"## `{module}`\n\nSource: `{relative}`\n\n"
+            f"Entry: `{entry}`. Static routines: {len(surface.blocks)}. "
+            f"Possible imports: {len(surface.imports)}. "
+            f"Section declarations: {names(surface.sections)}.\n\n"
+            f"Literal include closure ({len(includes)} files): {names(includes)}.\n\n"
+            f"Routines: {names(surface.blocks)}.\n\n"
+            f"Imports: {names(surface.imports)}.\n")
 
 
 def validate(root: Path = ROOT) -> list[str]:
@@ -506,48 +624,46 @@ def validate(root: Path = ROOT) -> list[str]:
     if not inventory.exists():
         return [f"missing inventory: {inventory.relative_to(root)}"]
     inventory_text = inventory.read_text(encoding="utf-8")
+    sections = re.findall(r"^## `([^`]+)`\n(.*?)(?=^## |\Z)",
+                          inventory_text, re.MULTILINE | re.DOTALL)
+    documented = {module: f"## `{module}`\n{body}" for module, body in sections}
+    if len(documented) != len(sections):
+        errors.append("duplicate inventory module section")
     for module, (relative, entry, imports) in TARGETS.items():
-        source = root / relative
-        if not source.exists():
-            errors.append(f"{module}: missing source {relative}")
+        try:
+            surface = source_surface(relative, root)
+        except ValueError as error:
+            errors.append(f"{module}: {error}")
             continue
-        source_text = source.read_text(encoding="utf-8")
-        blocks, actual_imports, sections, diagnostics = extract_inventory(source_text, root)
-        if f".module {module}" not in source_text:
-            errors.append(f"{module}: source module declaration missing")
-        if entry not in source_text:
-            errors.append(f"{module}: representative public entry `{entry}` missing")
-        if f"`{module}`" not in inventory_text or f"`{relative}`" not in inventory_text:
-            errors.append(f"{module}: inventory section/source citation missing")
+        source_text = surface.sources[relative]
+        declarations = re.findall(r"^\s*\.module\s+([^\s;]+)", source_text, re.MULTILINE)
+        if declarations != [module]:
+            errors.append(f"{module}: source module declaration missing or mismatched")
+        if entry not in surface.blocks:
+            errors.append(f"{module}: representative routine `{entry}` missing")
+        if documented.get(module, "").strip() != inventory_section(module, relative, entry, surface).strip():
+            errors.append(f"{module}: documented source surface drifted")
         for imported in imports:
-            if imported not in actual_imports:
+            if imported not in surface.imports:
                 errors.append(f"{module}: expected import `{imported}` missing")
-        expected_hash, expected_blocks, expected_imports, expected_sections, expected_diagnostics = SNAPSHOTS[module]
-        actual_hash = hashlib.sha256(source_text.encode()).hexdigest()
-        if actual_hash != expected_hash:
-            errors.append(f"{module}: source changed; review and refresh the complete source inventory")
-        if (len(blocks), len(actual_imports), tuple(sections), len(diagnostics)) != (
-            expected_blocks,
-            expected_imports,
-            expected_sections,
-            expected_diagnostics,
-        ):
-            errors.append(f"{module}: complete routine/import/state/diagnostic inventory drifted")
+        actual = surface.snapshot()
+        expected = SNAPSHOTS[module]
+        if actual[0] != expected[0]:
+            errors.append(f"{module}: source/include changed; review before refreshing the inventory")
+        if actual[1:] != expected[1:]:
+            errors.append(f"{module}: routine/import/state/diagnostic inventory drifted")
+    if set(documented) != set(TARGETS):
+        errors.append("inventory module set differs from audited targets")
     return errors
 
 
 def report(root: Path = ROOT) -> None:
-    """Print the complete checked inventory for human review and evidence capture."""
-    for module, (relative, _entry, _imports) in TARGETS.items():
-        source_text = (root / relative).read_text(encoding="utf-8")
-        blocks, imports, sections, diagnostics = extract_inventory(source_text, root)
-        print(f"## {module}")
-        print(f"source: {relative}")
-        print("routines: " + ", ".join(blocks))
-        print("imports: " + ", ".join(imports) if imports else "imports: (none)")
-        print("state sections: " + ", ".join(sections))
-        print("diagnostic paths:")
-        for diagnostic in diagnostics:
+    """Print the checked inventory and file-qualified diagnostic review hints."""
+    for module, (relative, entry, _imports) in TARGETS.items():
+        surface = source_surface(relative, root)
+        print(inventory_section(module, relative, entry, surface))
+        print("Lexical diagnostic mentions:")
+        for diagnostic in surface.diagnostics:
             print(f"- {diagnostic}")
 
 
